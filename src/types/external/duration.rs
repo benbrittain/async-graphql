@@ -1,6 +1,4 @@
-use std::str::FromStr;
-
-use chrono::Duration;
+use jiff::Span;
 
 use crate::{InputValueError, InputValueResult, Scalar, ScalarType, Value};
 
@@ -12,12 +10,10 @@ use crate::{InputValueError, InputValueResult, Scalar, ScalarType, Value};
     name = "Duration",
     specified_by_url = "https://en.wikipedia.org/wiki/ISO_8601#Durations"
 )]
-impl ScalarType for Duration {
+impl ScalarType for Span {
     fn parse(value: Value) -> InputValueResult<Self> {
         match &value {
-            Value::String(s) => Ok(Duration::from_std(std::time::Duration::from(
-                iso8601::Duration::from_str(s)?,
-            ))?),
+            Value::String(s) => Ok(s.parse::<Span>()?),
             _ => Err(InputValueError::expected_type(value)),
         }
     }

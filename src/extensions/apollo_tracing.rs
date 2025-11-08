@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
 use futures_util::lock::Mutex;
+use jiff::Timestamp;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 
 use crate::{
@@ -17,8 +17,8 @@ struct ResolveState {
     field_name: String,
     parent_type: String,
     return_type: String,
-    start_time: DateTime<Utc>,
-    end_time: DateTime<Utc>,
+    start_time: Timestamp,
+    end_time: Timestamp,
     start_offset: i64,
 }
 
@@ -32,7 +32,9 @@ impl Serialize for ResolveState {
         map.serialize_entry("startOffset", &self.start_offset)?;
         map.serialize_entry(
             "duration",
-            &(self.end_time - self.start_time).num_nanoseconds(),
+            &(self.end_time - self.start_time)
+                .total(jiff::Unit::Nanosecond)
+                .expect("should not contain units bigger than hours"),
         )?;
         map.end()
     }
@@ -53,8 +55,8 @@ impl ExtensionFactory for ApolloTracing {
     fn create(&self) -> Arc<dyn Extension> {
         Arc::new(ApolloTracingExtension {
             inner: Mutex::new(Inner {
-                start_time: Utc::now(),
-                end_time: Utc::now(),
+                start_time: Timestamp::now(),
+                end_time: Timestamp::now(),
                 resolves: Default::default(),
             }),
         })
@@ -62,8 +64,8 @@ impl ExtensionFactory for ApolloTracing {
 }
 
 struct Inner {
-    start_time: DateTime<Utc>,
-    end_time: DateTime<Utc>,
+    start_time: Timestamp,
+    end_time: Timestamp,
     resolves: Vec<ResolveState>,
 }
 
@@ -79,11 +81,11 @@ impl Extension for ApolloTracingExtension {
         operation_name: Option<&str>,
         next: NextExecute<'_>,
     ) -> Response {
-        self.inner.lock().await.start_time = Utc::now();
+        self.inner.lock().await.start_time = Timestamp::now();
         let resp = next.run(ctx, operation_name).await;
 
         let mut inner = self.inner.lock().await;
-        inner.end_time = Utc::now();
+        inner.end_time = Timestamp::now();
         inner
             .resolves
             .sort_by(|a, b| a.start_offset.cmp(&b.start_offset));
@@ -91,9 +93,9 @@ impl Extension for ApolloTracingExtension {
             "tracing",
             value!({
                 "version": 1,
-                "startTime": inner.start_time.to_rfc3339(),
-                "endTime": inner.end_time.to_rfc3339(),
-                "duration": (inner.end_time - inner.start_time).num_nanoseconds(),
+                "startTime": inner.start_time.to_string(),
+                "endTime": inner.end_time.to_string(),
+                "duration": (inner.end_time - inner.start_time).total(jiff::Unit::Nanosecond).expect("no calendar units"),
                 "execution": {
                     "resolvers": inner.resolves
                 }
@@ -111,13 +113,13 @@ impl Extension for ApolloTracingExtension {
         let field_name = info.path_node.field_name().to_string();
         let parent_type = info.parent_type.to_string();
         let return_type = info.return_type.to_string();
-        let start_time = Utc::now();
+        let start_time = Timestamp::now();
         let start_offset = (start_time - self.inner.lock().await.start_time)
-            .num_nanoseconds()
-            .unwrap();
+            .total(jiff::Unit::Nanosecond)
+            .expect("no calendar units") as i64;
 
         let res = next.run(ctx, info).await;
-        let end_time = Utc::now();
+        let end_time = Timestamp::now();
 
         self.inner.lock().await.resolves.push(ResolveState {
             path,

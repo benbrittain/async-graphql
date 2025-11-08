@@ -19,16 +19,12 @@ mod tokio;
 mod big_decimal;
 #[cfg(feature = "bson")]
 mod bson;
-#[cfg(feature = "chrono-tz")]
-mod chrono_tz;
-#[cfg(feature = "chrono")]
+#[cfg(feature = "jiff")]
 mod datetime;
 #[cfg(feature = "decimal")]
 mod decimal;
-#[cfg(feature = "chrono-duration")]
+#[cfg(feature = "jiff")]
 mod duration;
-#[cfg(feature = "chrono")]
-mod naive_time;
 #[cfg(feature = "secrecy")]
 mod secrecy;
 #[cfg(feature = "smol_str")]

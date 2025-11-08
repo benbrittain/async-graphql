@@ -1,8 +1,8 @@
-use chrono::{DateTime, FixedOffset, Local, Utc};
+use jiff::{Timestamp, Zoned};
 
 use crate::{InputValueError, InputValueResult, Scalar, ScalarType, Value};
 
-/// Implement the DateTime<FixedOffset> scalar
+/// Implement the Zoned scalar (replaces DateTime<FixedOffset>)
 ///
 /// The input/output is a string in RFC3339 format.
 #[Scalar(
@@ -10,20 +10,19 @@ use crate::{InputValueError, InputValueResult, Scalar, ScalarType, Value};
     name = "DateTime",
     specified_by_url = "https://datatracker.ietf.org/doc/html/rfc3339"
 )]
-impl ScalarType for DateTime<FixedOffset> {
+impl ScalarType for Zoned {
     fn parse(value: Value) -> InputValueResult<Self> {
         match &value {
-            Value::String(s) => Ok(s.parse::<DateTime<FixedOffset>>()?),
+            Value::String(s) => Ok(s.parse::<Zoned>()?),
             _ => Err(InputValueError::expected_type(value)),
         }
     }
-
     fn to_value(&self) -> Value {
-        Value::String(self.to_rfc3339())
+        Value::String(self.to_string())
     }
 }
 
-/// Implement the DateTime<Local> scalar
+/// Implement the Timestamp scalar (replaces DateTime<Utc>)
 ///
 /// The input/output is a string in RFC3339 format.
 #[Scalar(
@@ -31,36 +30,14 @@ impl ScalarType for DateTime<FixedOffset> {
     name = "DateTime",
     specified_by_url = "https://datatracker.ietf.org/doc/html/rfc3339"
 )]
-impl ScalarType for DateTime<Local> {
+impl ScalarType for Timestamp {
     fn parse(value: Value) -> InputValueResult<Self> {
         match &value {
-            Value::String(s) => Ok(s.parse::<DateTime<Local>>()?),
+            Value::String(s) => Ok(s.parse::<Timestamp>()?),
             _ => Err(InputValueError::expected_type(value)),
         }
     }
-
     fn to_value(&self) -> Value {
-        Value::String(self.to_rfc3339())
-    }
-}
-
-/// Implement the DateTime<Utc> scalar
-///
-/// The input/output is a string in RFC3339 format.
-#[Scalar(
-    internal,
-    name = "DateTime",
-    specified_by_url = "https://datatracker.ietf.org/doc/html/rfc3339"
-)]
-impl ScalarType for DateTime<Utc> {
-    fn parse(value: Value) -> InputValueResult<Self> {
-        match &value {
-            Value::String(s) => Ok(s.parse::<DateTime<Utc>>()?),
-            _ => Err(InputValueError::expected_type(value)),
-        }
-    }
-
-    fn to_value(&self) -> Value {
-        Value::String(self.to_rfc3339())
+        Value::String(self.to_string())
     }
 }
