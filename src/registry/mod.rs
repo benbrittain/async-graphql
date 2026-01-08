@@ -418,7 +418,7 @@ impl Display for MetaTypeId {
 }
 
 /// A validator for scalar
-pub type ScalarValidatorFn = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
+pub type ScalarValidatorFn = Arc<dyn Fn(&Value) -> bool>;
 
 /// Type metadata
 #[derive(Clone)]

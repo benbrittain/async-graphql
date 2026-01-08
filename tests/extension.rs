@@ -8,7 +8,7 @@ use async_graphql::{
         Extension, ExtensionContext, ExtensionFactory, NextExecute, NextParseQuery,
         NextPrepareRequest, NextRequest, NextResolve, NextSubscribe, NextValidation, ResolveInfo,
     },
-    futures_util::stream::BoxStream,
+    futures_util::stream::LocalBoxStream,
     parser::types::ExecutableDocument,
     *,
 };
@@ -41,7 +41,7 @@ pub async fn test_extension_ctx() {
 
     struct MyExtensionImpl;
 
-    #[async_trait::async_trait]
+    #[async_trait::async_trait(?Send)]
     impl Extension for MyExtensionImpl {
         async fn parse_query(
             &self,
@@ -132,7 +132,7 @@ pub async fn test_extension_call_order() {
         calls: Arc<Mutex<Vec<&'static str>>>,
     }
 
-    #[async_trait::async_trait]
+    #[async_trait::async_trait(?Send)]
     #[allow(unused_variables)]
     impl Extension for MyExtensionImpl {
         async fn request(&self, ctx: &ExtensionContext<'_>, next: NextRequest<'_>) -> Response {
@@ -145,9 +145,9 @@ pub async fn test_extension_call_order() {
         fn subscribe<'s>(
             &self,
             ctx: &ExtensionContext<'_>,
-            mut stream: BoxStream<'s, Response>,
+            mut stream: LocalBoxStream<'s, Response>,
             next: NextSubscribe<'_>,
-        ) -> BoxStream<'s, Response> {
+        ) -> LocalBoxStream<'s, Response> {
             let calls = self.calls.clone();
             next.run(
                 ctx,
@@ -337,7 +337,7 @@ pub async fn test_extension_call_order() {
 pub async fn query_execute_with_data() {
     struct MyExtensionImpl<T>(T);
 
-    #[async_trait::async_trait]
+    #[async_trait::async_trait(?Send)]
     impl<T> Extension for MyExtensionImpl<T>
     where
         T: Copy + Sync + Send + 'static,
@@ -401,7 +401,7 @@ pub async fn subscription_execute_with_data() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[async_trait::async_trait(?Send)]
     impl Extension for MyExtensionImpl {
         async fn execute(
             &self,

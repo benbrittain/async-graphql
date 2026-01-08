@@ -16,13 +16,13 @@ pub trait Guard {
 
     /// Check whether the guard will allow access to the field.
     #[cfg(not(feature = "boxed-trait"))]
-    fn check(&self, ctx: &Context<'_>) -> impl Future<Output = Result<()>> + Send;
+    fn check(&self, ctx: &Context<'_>) -> impl Future<Output = Result<()>>;
 }
 
 #[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T> Guard for T
 where
-    T: Fn(&Context<'_>) -> Result<()> + Send + Sync + 'static,
+    T: Fn(&Context<'_>) -> Result<()> + 'static,
 {
     async fn check(&self, ctx: &Context<'_>) -> Result<()> {
         self(ctx)
@@ -48,7 +48,7 @@ impl<T: Guard> GuardExt for T {}
 pub struct And<A: Guard, B: Guard>(A, B);
 
 #[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
-impl<A: Guard + Send + Sync, B: Guard + Send + Sync> Guard for And<A, B> {
+impl<A: Guard, B: Guard> Guard for And<A, B> {
     async fn check(&self, ctx: &Context<'_>) -> Result<()> {
         self.0.check(ctx).await?;
         self.1.check(ctx).await
@@ -59,7 +59,7 @@ impl<A: Guard + Send + Sync, B: Guard + Send + Sync> Guard for And<A, B> {
 pub struct Or<A: Guard, B: Guard>(A, B);
 
 #[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
-impl<A: Guard + Send + Sync, B: Guard + Send + Sync> Guard for Or<A, B> {
+impl<A: Guard, B: Guard> Guard for Or<A, B> {
     async fn check(&self, ctx: &Context<'_>) -> Result<()> {
         if self.0.check(ctx).await.is_ok() {
             return Ok(());

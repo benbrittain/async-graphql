@@ -8,14 +8,14 @@ mod tokio {
 
     use futures_util::{
         FutureExt,
-        future::BoxFuture,
-        task::{FutureObj, Spawn, SpawnError},
+        future::LocalBoxFuture,
+        task::{LocalFutureObj, LocalSpawn, SpawnError},
     };
     use tokio::runtime::Handle;
 
     use crate::runtime::Timer;
 
-    /// A Tokio-backed implementation of [`Spawn`]
+    /// A Tokio-backed implementation of [`LocalSpawn`]
     ///
     /// We use this abstraction across the crate for spawning tasks onto the
     /// runtime
@@ -39,9 +39,12 @@ mod tokio {
         }
     }
 
-    impl Spawn for TokioSpawner {
-        fn spawn_obj(&self, future: FutureObj<'static, ()>) -> Result<(), SpawnError> {
-            self.handle.spawn(future);
+    impl LocalSpawn for TokioSpawner {
+        fn spawn_local_obj(
+            &self,
+            future: LocalFutureObj<'static, ()>,
+        ) -> Result<(), SpawnError> {
+            ::tokio::task::spawn_local(future);
             Ok(())
         }
     }
@@ -53,12 +56,12 @@ mod tokio {
     }
 
     impl Timer for TokioTimer {
-        fn delay(&self, duration: Duration) -> BoxFuture<'static, ()> {
-            tokio::time::sleep(duration).boxed()
+        fn delay(&self, duration: Duration) -> LocalBoxFuture<'static, ()> {
+            tokio::time::sleep(duration).boxed_local()
         }
     }
 }
-use futures_util::future::BoxFuture;
+use futures_util::future::LocalBoxFuture;
 
 #[cfg(feature = "tokio")]
 pub use self::tokio::{TokioSpawner, TokioTimer};
@@ -69,9 +72,9 @@ pub use self::tokio::{TokioSpawner, TokioTimer};
 /// environment you're in.
 ///
 /// Be it Tokio, smol, or even the browser.
-pub trait Timer: Send + Sync + 'static {
+pub trait Timer: 'static {
     /// Returns a future that resolves after the specified duration
-    fn delay(&self, duration: Duration) -> BoxFuture<'static, ()>;
+    fn delay(&self, duration: Duration) -> LocalBoxFuture<'static, ()>;
 }
 
 const _: Option<&dyn Timer> = None;

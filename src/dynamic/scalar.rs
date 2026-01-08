@@ -90,7 +90,7 @@ impl Scalar {
 
     /// Set the validator
     #[inline]
-    pub fn validator(self, validator: impl Fn(&Value) -> bool + Send + Sync + 'static) -> Self {
+    pub fn validator(self, validator: impl Fn(&Value) -> bool + 'static) -> Self {
         Self {
             validator: Some(Arc::new(validator)),
             ..self

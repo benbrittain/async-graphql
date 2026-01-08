@@ -2,20 +2,20 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use futures_util::stream::{BoxStream, FuturesOrdered, StreamExt};
+use futures_util::stream::{FuturesOrdered, LocalBoxStream, StreamExt};
 
 use crate::{BatchRequest, BatchResponse, Data, Request, Response};
 
 /// Represents a GraphQL executor
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
-pub trait Executor: Unpin + Clone + Send + Sync + 'static {
+#[cfg_attr(feature = "boxed-trait", async_trait::async_trait(?Send))]
+pub trait Executor: Unpin + Clone + 'static {
     /// Execute a GraphQL query.
     #[cfg(feature = "boxed-trait")]
     async fn execute(&self, request: Request) -> Response;
 
     /// Execute a GraphQL query.
     #[cfg(not(feature = "boxed-trait"))]
-    fn execute(&self, request: Request) -> impl Future<Output = Response> + Send;
+    fn execute(&self, request: Request) -> impl Future<Output = Response>;
 
     /// Execute a GraphQL batch query.
     #[cfg(feature = "boxed-trait")]
@@ -34,10 +34,7 @@ pub trait Executor: Unpin + Clone + Send + Sync + 'static {
 
     /// Execute a GraphQL batch query.
     #[cfg(not(feature = "boxed-trait"))]
-    fn execute_batch(
-        &self,
-        batch_request: BatchRequest,
-    ) -> impl Future<Output = BatchResponse> + Send {
+    fn execute_batch(&self, batch_request: BatchRequest) -> impl Future<Output = BatchResponse> {
         async {
             match batch_request {
                 BatchRequest::Single(request) => BatchResponse::Single(self.execute(request).await),
@@ -57,5 +54,5 @@ pub trait Executor: Unpin + Clone + Send + Sync + 'static {
         &self,
         request: Request,
         session_data: Option<Arc<Data>>,
-    ) -> BoxStream<'static, Response>;
+    ) -> LocalBoxStream<'static, Response>;
 }

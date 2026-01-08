@@ -159,7 +159,7 @@ where
     fn create_field_stream<'a>(
         &'a self,
         _ctx: &'a Context<'_>,
-    ) -> Option<Pin<Box<dyn Stream<Item = Response> + Send + 'a>>> {
+    ) -> Option<Pin<Box<dyn Stream<Item = Response> + 'a>>> {
         unreachable!()
     }
 }
@@ -198,7 +198,7 @@ impl SubscriptionType for MergedObjectTail {
     fn create_field_stream<'a>(
         &'a self,
         _ctx: &'a Context<'_>,
-    ) -> Option<Pin<Box<dyn Stream<Item = Response> + Send + 'a>>> {
+    ) -> Option<Pin<Box<dyn Stream<Item = Response> + 'a>>> {
         unreachable!()
     }
 }

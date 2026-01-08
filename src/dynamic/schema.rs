@@ -1,7 +1,7 @@
 use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
 
 use async_graphql_parser::types::OperationType;
-use futures_util::{StreamExt, TryFutureExt, stream::BoxStream};
+use futures_util::{StreamExt, TryFutureExt, stream::LocalBoxStream};
 use indexmap::IndexMap;
 
 use crate::{
@@ -146,7 +146,7 @@ impl SchemaBuilder {
     /// Set the entity resolver for federation
     pub fn entity_resolver<F>(self, resolver_fn: F) -> Self
     where
-        F: for<'a> Fn(ResolverContext<'a>) -> FieldFuture<'a> + Send + Sync + 'static,
+        F: for<'a> Fn(ResolverContext<'a>) -> FieldFuture<'a> + 'static,
     {
         Self {
             entity_resolver: Some(Box::new(resolver_fn)),
@@ -422,7 +422,7 @@ impl Schema {
         &self,
         request: impl Into<DynamicRequest>,
         session_data: Arc<Data>,
-    ) -> BoxStream<'static, Response> {
+    ) -> LocalBoxStream<'static, Response> {
         let schema = self.clone();
         let request = request.into();
         let extensions = self.create_extensions(session_data.clone());
@@ -482,14 +482,14 @@ impl Schema {
                 }
             })
         };
-        extensions.subscribe(stream.boxed())
+        extensions.subscribe(stream.boxed_local())
     }
 
     /// Execute a GraphQL subscription.
     pub fn execute_stream(
         &self,
         request: impl Into<DynamicRequest>,
-    ) -> BoxStream<'static, Response> {
+    ) -> LocalBoxStream<'static, Response> {
         self.execute_stream_with_session_data(request, Default::default())
     }
 
@@ -509,7 +509,7 @@ impl Executor for Schema {
         &self,
         request: Request,
         session_data: Option<Arc<Data>>,
-    ) -> BoxStream<'static, Response> {
+    ) -> LocalBoxStream<'static, Response> {
         Schema::execute_stream_with_session_data(self, request, session_data.unwrap_or_default())
     }
 }
@@ -548,7 +548,7 @@ mod tests {
 
     use async_graphql_parser::{Pos, types::ExecutableDocument};
     use async_graphql_value::Variables;
-    use futures_util::{StreamExt, stream::BoxStream};
+    use futures_util::{StreamExt, stream::LocalBoxStream};
     use tokio::sync::Mutex;
 
     use crate::{
@@ -850,7 +850,7 @@ mod tests {
             calls: Arc<Mutex<Vec<&'static str>>>,
         }
 
-        #[async_trait::async_trait]
+        #[async_trait::async_trait(?Send)]
         #[allow(unused_variables)]
         impl Extension for MyExtensionImpl {
             async fn request(&self, ctx: &ExtensionContext<'_>, next: NextRequest<'_>) -> Response {
@@ -863,9 +863,9 @@ mod tests {
             fn subscribe<'s>(
                 &self,
                 ctx: &ExtensionContext<'_>,
-                mut stream: BoxStream<'s, Response>,
+                mut stream: LocalBoxStream<'s, Response>,
                 next: NextSubscribe<'_>,
-            ) -> BoxStream<'s, Response> {
+            ) -> LocalBoxStream<'s, Response> {
                 let calls = self.calls.clone();
                 next.run(
                     ctx,

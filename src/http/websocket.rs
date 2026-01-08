@@ -11,7 +11,7 @@ use std::{
 
 use futures_util::{
     FutureExt, StreamExt,
-    future::{BoxFuture, Ready},
+    future::{LocalBoxFuture, Ready},
     stream::Stream,
 };
 use pin_project_lite::pin_project;
@@ -67,7 +67,7 @@ impl WsMessage {
 struct Timer {
     interval: Duration,
     rt_timer: Box<dyn RtTimer>,
-    future: BoxFuture<'static, ()>,
+    future: LocalBoxFuture<'static, ()>,
 }
 
 impl Timer {
@@ -114,12 +114,12 @@ pin_project! {
     pub struct WebSocket<S, E, OnInit, OnPing> {
         on_connection_init: Option<OnInit>,
         on_ping: OnPing,
-        init_fut: Option<BoxFuture<'static, Result<Data>>>,
-        ping_fut: Option<BoxFuture<'static, Result<Option<serde_json::Value>>>>,
+        init_fut: Option<LocalBoxFuture<'static, Result<Data>>>,
+        ping_fut: Option<LocalBoxFuture<'static, Result<Option<serde_json::Value>>>>,
         connection_data: Option<Data>,
         data: Option<Arc<Data>>,
         executor: E,
-        streams: HashMap<String, Pin<Box<dyn Stream<Item = Response> + Send>>>,
+        streams: HashMap<String, Pin<Box<dyn Stream<Item = Response>>>>,
         #[pin]
         stream: S,
         protocol: Protocols,
@@ -216,8 +216,8 @@ where
     #[must_use]
     pub fn on_connection_init<F, R>(self, callback: F) -> WebSocket<S, E, F, OnPing>
     where
-        F: FnOnce(serde_json::Value) -> R + Send + 'static,
-        R: Future<Output = Result<Data>> + Send + 'static,
+        F: FnOnce(serde_json::Value) -> R + 'static,
+        R: Future<Output = Result<Data>> + 'static,
     {
         WebSocket {
             on_connection_init: Some(callback),
@@ -247,8 +247,8 @@ where
     #[must_use]
     pub fn on_ping<F, R>(self, callback: F) -> WebSocket<S, E, OnInit, F>
     where
-        F: FnOnce(Option<&Data>, Option<serde_json::Value>) -> R + Send + Clone + 'static,
-        R: Future<Output = Result<Option<serde_json::Value>>> + Send + 'static,
+        F: FnOnce(Option<&Data>, Option<serde_json::Value>) -> R + Clone + 'static,
+        R: Future<Output = Result<Option<serde_json::Value>>> + 'static,
     {
         WebSocket {
             on_connection_init: self.on_connection_init,
@@ -289,10 +289,10 @@ impl<S, E, OnInit, InitFut, OnPing, PingFut> Stream for WebSocket<S, E, OnInit, 
 where
     E: Executor,
     S: Stream<Item = serde_json::Result<ClientMessage>>,
-    OnInit: FnOnce(serde_json::Value) -> InitFut + Send + 'static,
-    InitFut: Future<Output = Result<Data>> + Send + 'static,
-    OnPing: FnOnce(Option<&Data>, Option<serde_json::Value>) -> PingFut + Clone + Send + 'static,
-    PingFut: Future<Output = Result<Option<serde_json::Value>>> + Send + 'static,
+    OnInit: FnOnce(serde_json::Value) -> InitFut + 'static,
+    InitFut: Future<Output = Result<Data>> + 'static,
+    OnPing: FnOnce(Option<&Data>, Option<serde_json::Value>) -> PingFut + Clone + 'static,
+    PingFut: Future<Output = Result<Option<serde_json::Value>>> + 'static,
 {
     type Item = WsMessage;
 

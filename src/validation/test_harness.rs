@@ -3,8 +3,6 @@
 #![allow(dead_code)]
 #![allow(unreachable_code)]
 
-use std::sync::OnceLock;
-
 use crate::{
     futures_util::stream::Stream,
     parser::types::ExecutableDocument,
@@ -373,7 +371,10 @@ impl Subscription {
     }
 }
 
-static TEST_HARNESS: OnceLock<Schema<Query, Mutation, Subscription>> = OnceLock::new();
+fn get_test_schema() -> &'static Schema<Query, Mutation, Subscription> {
+    // Leak a schema for testing - this is acceptable in test code
+    Box::leak(Box::new(Schema::new(Query, Mutation, Subscription)))
+}
 
 pub(crate) fn validate<'a, V, F>(
     doc: &'a ExecutableDocument,
@@ -383,7 +384,7 @@ where
     V: Visitor<'a> + 'a,
     F: Fn() -> V,
 {
-    let schema = TEST_HARNESS.get_or_init(|| Schema::new(Query, Mutation, Subscription));
+    let schema = get_test_schema();
     let registry = &schema.0.env.registry;
     let mut ctx = VisitorContext::new(registry, doc, None, None);
     let mut visitor = factory();

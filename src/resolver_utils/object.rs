@@ -13,11 +13,11 @@ use crate::{Context, Error, Name, OutputType, ServerError, ServerResult, Value};
 pub fn resolve_field_async<'a, T, E, F>(
     ctx: &'a Context<'a>,
     fut: F,
-) -> impl Future<Output = ServerResult<Option<Value>>> + Send + 'a
+) -> impl Future<Output = ServerResult<Option<Value>>> + 'a
 where
-    T: OutputType + Send,
-    E: Into<Error> + Send + Sync,
-    F: Future<Output = Result<T, E>> + Send + 'a,
+    T: OutputType,
+    E: Into<Error>,
+    F: Future<Output = Result<T, E>> + 'a,
 {
     async move {
         let obj: T = fut.await.map_err(|err| {

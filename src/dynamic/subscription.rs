@@ -1,7 +1,8 @@
 use std::{borrow::Cow, fmt, fmt::Debug, sync::Arc};
 
 use futures_util::{
-    Future, FutureExt, Stream, StreamExt, TryStreamExt, future::BoxFuture, stream::BoxStream,
+    Future, FutureExt, Stream, StreamExt, TryStreamExt, future::LocalBoxFuture,
+    stream::LocalBoxStream,
 };
 use indexmap::IndexMap;
 
@@ -18,7 +19,8 @@ use crate::{
     subscription::BoxFieldStream,
 };
 
-type BoxResolveFut<'a> = BoxFuture<'a, Result<BoxStream<'a, Result<FieldValue<'a>>>>>;
+type BoxResolveFut<'a> =
+    LocalBoxFuture<'a, Result<LocalBoxStream<'a, Result<FieldValue<'a>>>>>;
 
 /// A future that returned from field resolver
 pub struct SubscriptionFieldFuture<'a>(pub(crate) BoxResolveFut<'a>);
@@ -27,22 +29,22 @@ impl<'a> SubscriptionFieldFuture<'a> {
     /// Create a ResolverFuture
     pub fn new<Fut, S, T>(future: Fut) -> Self
     where
-        Fut: Future<Output = Result<S>> + Send + 'a,
-        S: Stream<Item = Result<T>> + Send + 'a,
-        T: Into<FieldValue<'a>> + Send + 'a,
+        Fut: Future<Output = Result<S>> + 'a,
+        S: Stream<Item = Result<T>> + 'a,
+        T: Into<FieldValue<'a>> + 'a,
     {
         Self(
             async move {
                 let res = future.await?.map_ok(Into::into);
-                Ok(res.boxed())
+                Ok(res.boxed_local())
             }
-            .boxed(),
+            .boxed_local(),
         )
     }
 }
 
 type BoxResolverFn =
-    Arc<dyn for<'a> Fn(ResolverContext<'a>) -> SubscriptionFieldFuture<'a> + Send + Sync>;
+    Arc<dyn for<'a> Fn(ResolverContext<'a>) -> SubscriptionFieldFuture<'a>>;
 
 /// A GraphQL subscription field
 pub struct SubscriptionField {
@@ -60,7 +62,7 @@ impl SubscriptionField {
     where
         N: Into<String>,
         T: Into<TypeRef>,
-        F: for<'a> Fn(ResolverContext<'a>) -> SubscriptionFieldFuture<'a> + Send + Sync + 'static,
+        F: for<'a> Fn(ResolverContext<'a>) -> SubscriptionFieldFuture<'a> + 'static,
     {
         Self {
             name: name.into(),
@@ -313,7 +315,7 @@ impl Subscription {
                         Ok(())
                     })
                     .map(|res| res.unwrap_or_else(|err| Response::from_errors(vec![err])))
-                    .boxed(),
+                    .boxed_local(),
                 );
             }
         }

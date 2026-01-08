@@ -5,7 +5,7 @@ use std::{
     ops::Deref,
 };
 
-use futures_util::{Future, FutureExt, future::BoxFuture};
+use futures_util::{Future, FutureExt, future::LocalBoxFuture};
 use indexmap::IndexMap;
 
 use super::Directive;
@@ -24,11 +24,11 @@ pub(crate) enum FieldValueInner<'a> {
     /// Borrowed any value
     /// The first item is the [`std::any::type_name`] of the value used for
     /// debugging.
-    BorrowedAny(Cow<'static, str>, &'a (dyn Any + Send + Sync)),
+    BorrowedAny(Cow<'static, str>, &'a dyn Any),
     /// Owned any value
     /// The first item is the [`std::any::type_name`] of the value used for
     /// debugging.
-    OwnedAny(Cow<'static, str>, Box<dyn Any + Send + Sync>),
+    OwnedAny(Cow<'static, str>, Box<dyn Any>),
     /// A list
     List(Vec<FieldValue<'a>>),
     /// A typed Field value
@@ -114,7 +114,7 @@ impl<'a> FieldValue<'a> {
 
     /// Create a FieldValue from owned any value
     #[inline]
-    pub fn owned_any<T: Any + Send + Sync>(obj: T) -> Self {
+    pub fn owned_any<T: Any>(obj: T) -> Self {
         Self(FieldValueInner::OwnedAny(
             std::any::type_name::<T>().into(),
             Box::new(obj),
@@ -123,13 +123,13 @@ impl<'a> FieldValue<'a> {
 
     /// Create a FieldValue from unsized any value
     #[inline]
-    pub fn boxed_any(obj: Box<dyn Any + Send + Sync>) -> Self {
+    pub fn boxed_any(obj: Box<dyn Any>) -> Self {
         Self(FieldValueInner::OwnedAny("Any".into(), obj))
     }
 
     /// Create a FieldValue from owned any value
     #[inline]
-    pub fn borrowed_any(obj: &'a (dyn Any + Send + Sync)) -> Self {
+    pub fn borrowed_any(obj: &'a dyn Any) -> Self {
         Self(FieldValueInner::BorrowedAny("Any".into(), obj))
     }
 
@@ -262,7 +262,7 @@ impl<'a> FieldValue<'a> {
     }
 }
 
-type BoxResolveFut<'a> = BoxFuture<'a, Result<Option<FieldValue<'a>>>>;
+type BoxResolveFut<'a> = LocalBoxFuture<'a, Result<Option<FieldValue<'a>>>>;
 
 /// A context for resolver function
 pub struct ResolverContext<'a> {
@@ -295,15 +295,15 @@ impl<'a> FieldFuture<'a> {
     /// Create a `FieldFuture` from a `Future`
     pub fn new<Fut, R>(future: Fut) -> Self
     where
-        Fut: Future<Output = Result<Option<R>>> + Send + 'a,
-        R: Into<FieldValue<'a>> + Send,
+        Fut: Future<Output = Result<Option<R>>> + 'a,
+        R: Into<FieldValue<'a>>,
     {
         FieldFuture::Future(
             async move {
                 let res = future.await?;
                 Ok(res.map(Into::into))
             }
-            .boxed(),
+            .boxed_local(),
         )
     }
 
@@ -314,7 +314,7 @@ impl<'a> FieldFuture<'a> {
 }
 
 pub(crate) type BoxResolverFn =
-    Box<dyn for<'a> Fn(ResolverContext<'a>) -> FieldFuture<'a> + Send + Sync>;
+    Box<dyn for<'a> Fn(ResolverContext<'a>) -> FieldFuture<'a>>;
 
 /// A GraphQL field
 pub struct Field {
@@ -354,7 +354,7 @@ impl Field {
     where
         N: Into<String>,
         T: Into<TypeRef>,
-        F: for<'a> Fn(ResolverContext<'a>) -> FieldFuture<'a> + Send + Sync + 'static,
+        F: for<'a> Fn(ResolverContext<'a>) -> FieldFuture<'a> + 'static,
     {
         let ty = ty.into();
         Self {
