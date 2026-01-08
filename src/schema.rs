@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_graphql_parser::types::ExecutableDocument;
-use futures_util::stream::{self, BoxStream, FuturesOrdered, StreamExt};
+use futures_util::stream::{self, FuturesOrdered, LocalBoxStream, StreamExt};
 
 use crate::{
     BatchRequest, BatchResponse, CacheControl, ContextBase, EmptyMutation, EmptySubscription,
@@ -151,7 +151,7 @@ impl<Query, Mutation, Subscription> SchemaBuilder<Query, Mutation, Subscription>
     /// Add a global data that can be accessed in the `Schema`. You access it
     /// with `Context::data`.
     #[must_use]
-    pub fn data<D: Any + Send + Sync>(mut self, data: D) -> Self {
+    pub fn data<D: Any>(mut self, data: D) -> Self {
         self.data.insert(data);
         self
     }
@@ -574,12 +574,12 @@ where
         &self,
         request: impl Into<Request>,
         session_data: Arc<Data>,
-    ) -> BoxStream<'static, Response> {
+    ) -> LocalBoxStream<'static, Response> {
         let schema = self.clone();
         let request = request.into();
         let extensions = self.create_extensions(session_data.clone());
 
-        let stream = futures_util::stream::StreamExt::boxed({
+        let stream = futures_util::stream::StreamExt::boxed_local({
             let extensions = extensions.clone();
             let env = self.0.env.clone();
             async_stream::stream! {
@@ -642,12 +642,12 @@ where
     }
 
     /// Execute a GraphQL subscription.
-    pub fn execute_stream(&self, request: impl Into<Request>) -> BoxStream<'static, Response> {
+    pub fn execute_stream(&self, request: impl Into<Request>) -> LocalBoxStream<'static, Response> {
         self.execute_stream_with_session_data(request, Default::default())
     }
 
     /// Access global data stored in the Schema
-    pub fn data<D: Any + Send + Sync>(&self) -> Option<&D> {
+    pub fn data<D: Any>(&self) -> Option<&D> {
         self.0
             .env
             .data
@@ -656,7 +656,7 @@ where
     }
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
+#[cfg_attr(feature = "boxed-trait", async_trait::async_trait(?Send))]
 impl<Query, Mutation, Subscription> Executor for Schema<Query, Mutation, Subscription>
 where
     Query: ObjectType + 'static,
@@ -671,7 +671,7 @@ where
         &self,
         request: Request,
         session_data: Option<Arc<Data>>,
-    ) -> BoxStream<'static, Response> {
+    ) -> LocalBoxStream<'static, Response> {
         Schema::execute_stream_with_session_data(&self, request, session_data.unwrap_or_default())
     }
 }

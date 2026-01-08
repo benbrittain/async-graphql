@@ -59,7 +59,6 @@ pub mod rejection {
 
 impl<S, R> FromRequest<S> for GraphQLRequest<R>
 where
-    S: Send + Sync,
     R: IntoResponse + From<ParseRequestError>,
 {
     type Rejection = R;
@@ -91,7 +90,6 @@ impl<R> GraphQLBatchRequest<R> {
 
 impl<S, R> FromRequest<S> for GraphQLBatchRequest<R>
 where
-    S: Send + Sync,
     R: IntoResponse + From<ParseRequestError>,
 {
     type Rejection = R;

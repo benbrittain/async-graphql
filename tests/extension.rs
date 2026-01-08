@@ -401,7 +401,7 @@ pub async fn subscription_execute_with_data() {
         }
     }
 
-    #[async_trait::async_trait]
+    #[async_trait::async_trait(?Send)]
     impl Extension for MyExtensionImpl {
         async fn execute(
             &self,

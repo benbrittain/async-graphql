@@ -20,13 +20,13 @@ pub trait Description {
 }
 
 /// Used to specify the GraphQL Type name.
-pub trait TypeName: Send + Sync {
+pub trait TypeName {
     /// Returns a GraphQL type name.
     fn type_name() -> Cow<'static, str>;
 }
 
 /// Represents a GraphQL input type.
-pub trait InputType: Send + Sync + Sized {
+pub trait InputType: Sized {
     /// The raw type used for validator.
     ///
     /// Usually it is `Self`, but the wrapper type is its internal type.
@@ -65,8 +65,8 @@ pub trait InputType: Send + Sync + Sized {
 }
 
 /// Represents a GraphQL output type.
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
-pub trait OutputType: Send + Sync {
+#[cfg_attr(feature = "boxed-trait", async_trait::async_trait(?Send))]
+pub trait OutputType {
     /// Type the name.
     fn type_name() -> Cow<'static, str>;
 
@@ -100,10 +100,10 @@ pub trait OutputType: Send + Sync {
         &self,
         ctx: &ContextSelectionSet<'_>,
         field: &Positioned<Field>,
-    ) -> impl Future<Output = ServerResult<Value>> + Send;
+    ) -> impl Future<Output = ServerResult<Value>>;
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
+#[cfg_attr(feature = "boxed-trait", async_trait::async_trait(?Send))]
 impl<T: OutputType + ?Sized> OutputType for &T {
     fn type_name() -> Cow<'static, str> {
         T::type_name()
@@ -124,7 +124,7 @@ impl<T: OutputType + ?Sized> OutputType for &T {
 }
 
 #[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
-impl<T: OutputType + Sync, E: Into<Error> + Send + Sync + Clone> OutputType for Result<T, E> {
+impl<T: OutputType, E: Into<Error> + Clone> OutputType for Result<T, E> {
     fn type_name() -> Cow<'static, str> {
         T::type_name()
     }
@@ -191,7 +191,7 @@ impl<T: OutputType + ?Sized> OutputType for Box<T> {
         &self,
         ctx: &ContextSelectionSet<'_>,
         field: &Positioned<Field>,
-    ) -> impl Future<Output = ServerResult<Value>> + Send {
+    ) -> impl Future<Output = ServerResult<Value>> {
         T::resolve(self.as_ref(), ctx, field)
     }
 }
@@ -296,8 +296,6 @@ pub trait ComplexObject {
     async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>>;
 
     #[cfg(not(feature = "boxed-trait"))]
-    fn resolve_field(
-        &self,
-        ctx: &Context<'_>,
-    ) -> impl Future<Output = ServerResult<Option<Value>>> + Send;
+    fn resolve_field(&self, ctx: &Context<'_>)
+    -> impl Future<Output = ServerResult<Option<Value>>>;
 }

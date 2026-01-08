@@ -12,7 +12,7 @@ use std::{
 use futures_timer::Delay;
 use futures_util::{
     FutureExt, StreamExt,
-    future::{BoxFuture, Ready},
+    future::{LocalBoxFuture, Ready},
     stream::Stream,
 };
 use pin_project_lite::pin_project;
@@ -110,12 +110,12 @@ pin_project! {
     pub struct WebSocket<S, E, OnInit, OnPing> {
         on_connection_init: Option<OnInit>,
         on_ping: OnPing,
-        init_fut: Option<BoxFuture<'static, Result<Data>>>,
-        ping_fut: Option<BoxFuture<'static, Result<Option<serde_json::Value>>>>,
+        init_fut: Option<LocalBoxFuture<'static, Result<Data>>>,
+        ping_fut: Option<LocalBoxFuture<'static, Result<Option<serde_json::Value>>>>,
         connection_data: Option<Data>,
         data: Option<Arc<Data>>,
         executor: E,
-        streams: HashMap<String, Pin<Box<dyn Stream<Item = Response> + Send>>>,
+        streams: HashMap<String, Pin<Box<dyn Stream<Item = Response>>>>,
         #[pin]
         stream: S,
         protocol: Protocols,
