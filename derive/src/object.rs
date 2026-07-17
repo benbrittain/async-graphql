@@ -775,10 +775,18 @@ pub fn generate(
     };
 
     let visible = visible_fn(&object_args.visible);
-    let resolve_container = if object_args.serial {
-        quote! { #crate_name::resolver_utils::resolve_container_serial(ctx, self).await }
+    // A `#[Object] impl dyn Trait` has an unsized receiver, which cannot be
+    // erased to `&dyn DynContainer` directly under the `boxed-trait` feature.
+    // Passing `&self` routes it through the (sized) `&T` container impl instead.
+    let resolve_receiver = if matches!(item_impl.self_ty.as_ref(), syn::Type::TraitObject(_)) {
+        quote! { &self }
     } else {
-        quote! { #crate_name::resolver_utils::resolve_container(ctx, self).await }
+        quote! { self }
+    };
+    let resolve_container = if object_args.serial {
+        quote! { #crate_name::resolver_utils::resolve_container_serial(ctx, #resolve_receiver).await }
+    } else {
+        quote! { #crate_name::resolver_utils::resolve_container(ctx, #resolve_receiver).await }
     };
 
     let has_cache_control = object_args.cache_control.no_cache
