@@ -173,15 +173,37 @@ pub trait DynContainer: Send + Sync {
     fn type_name(&self) -> Cow<'static, str>;
 }
 
+/// Implemented manually (not via `#[async_trait]`) so the already-boxed
+/// futures from `ContainerType` are forwarded as-is instead of being wrapped
+/// in a second boxed state machine per type.
 #[cfg(feature = "boxed-trait")]
-#[async_trait::async_trait]
 impl<T: ContainerType> DynContainer for T {
-    async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>> {
-        ContainerType::resolve_field(self, ctx).await
+    fn resolve_field<'life0, 'life1, 'life2, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        Self: 'async_trait,
+    {
+        ContainerType::resolve_field(self, ctx)
     }
 
-    async fn find_entity(&self, ctx: &Context<'_>, params: &Value) -> ServerResult<Option<Value>> {
-        ContainerType::find_entity(self, ctx, params).await
+    fn find_entity<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+        params: &'life3 Value,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: 'async_trait,
+    {
+        ContainerType::find_entity(self, ctx, params)
     }
 
     fn collect_all_fields<'a>(
