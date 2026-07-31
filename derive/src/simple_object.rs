@@ -356,13 +356,15 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
         };
 
         if !field.flatten {
-            getters.push(quote! {
-                 #[inline]
-                 #[allow(missing_docs)]
-                 #vis async fn #ident(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::Result<#ty> {
-                     ::std::result::Result::Ok(#block)
-                 }
-            });
+            if !object_args.no_getters {
+                getters.push(quote! {
+                     #[inline]
+                     #[allow(missing_docs)]
+                     #vis async fn #ident(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::Result<#ty> {
+                         ::std::result::Result::Ok(#block)
+                     }
+                });
+            }
 
             resolvers.push(quote! {
                 if ctx.item.node.name.node == #field_name {

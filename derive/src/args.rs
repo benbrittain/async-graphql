@@ -254,6 +254,8 @@ pub struct SimpleObject {
     #[darling(default)]
     pub complex: bool,
     #[darling(default)]
+    pub no_getters: bool,
+    #[darling(default)]
     pub name: Option<String>,
     #[darling(default)]
     pub name_type: bool,
