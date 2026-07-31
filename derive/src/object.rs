@@ -750,7 +750,6 @@ pub fn generate(
     };
 
     find_entities.sort_by(|(a, _), (b, _)| b.cmp(a));
-    let find_entities_iter = find_entities.iter().map(|(_, code)| code);
 
     if resolvers.is_empty() && create_entity_types.is_empty() {
         return Err(Error::new_spanned(
@@ -843,6 +842,24 @@ pub fn generate(
 
     let resolve_field_resolver_match = generate_field_match(resolvers)?;
 
+    // `ContainerType::find_entity` has a default body returning `Ok(None)`;
+    // only override it when this object actually defines entity resolvers, so
+    // non-federation objects don't pay for a per-type override.
+    let has_entities = !find_entities.is_empty();
+    let find_entity_impl = has_entities.then(|| {
+        let find_entities_iter = find_entities.iter().map(|(_, code)| code);
+        quote! {
+            async fn find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
+                if let ::std::option::Option::Some((params, typename)) =
+                    #crate_name::resolver_utils::find_entity_params(ctx, params)?
+                {
+                    #(#find_entities_iter)*
+                }
+                ::std::result::Result::Ok(::std::option::Option::None)
+            }
+        }
+    });
+
     let expanded = if object_args.concretes.is_empty() {
         quote! {
             #item_impl
@@ -860,14 +877,7 @@ pub fn generate(
                         ::std::result::Result::Ok(::std::option::Option::None)
                     }
 
-                    async fn find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
-                        if let ::std::option::Option::Some((params, typename)) =
-                            #crate_name::resolver_utils::find_entity_params(ctx, params)?
-                        {
-                            #(#find_entities_iter)*
-                        }
-                        ::std::result::Result::Ok(::std::option::Option::None)
-                    }
+                    #find_entity_impl
                 }
 
                 #[allow(clippy::all, clippy::pedantic)]
@@ -910,6 +920,27 @@ pub fn generate(
     } else {
         let mut codes = Vec::new();
 
+        let internal_find_entity = has_entities.then(|| {
+            let find_entities_iter = find_entities.iter().map(|(_, code)| code);
+            quote! {
+                async fn __internal_find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
+                    if let ::std::option::Option::Some((params, typename)) =
+                        #crate_name::resolver_utils::find_entity_params(ctx, params)?
+                    {
+                        #(#find_entities_iter)*
+                    }
+                    ::std::result::Result::Ok(::std::option::Option::None)
+                }
+            }
+        });
+        let concrete_find_entity = has_entities.then(|| {
+            quote! {
+                async fn find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
+                    self.__internal_find_entity(ctx, params).await
+                }
+            }
+        });
+
         codes.push(quote! {
             #item_impl
 
@@ -941,14 +972,7 @@ pub fn generate(
                         ::std::result::Result::Ok(::std::option::Option::None)
                     }
 
-                    async fn __internal_find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
-                        if let ::std::option::Option::Some((params, typename)) =
-                            #crate_name::resolver_utils::find_entity_params(ctx, params)?
-                        {
-                            #(#find_entities_iter)*
-                        }
-                        ::std::result::Result::Ok(::std::option::Option::None)
-                    }
+                    #internal_find_entity
                 }
             };
         });
@@ -979,9 +1003,7 @@ pub fn generate(
                         self.__internal_resolve_field(ctx).await
                     }
 
-                    async fn find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
-                        self.__internal_find_entity(ctx, params).await
-                    }
+                    #concrete_find_entity
                 }
 
                 #boxed_trait
