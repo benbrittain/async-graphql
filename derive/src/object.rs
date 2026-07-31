@@ -690,12 +690,31 @@ pub fn generate(
                 };
 
                 let resolve_body = if is_async {
-                    quote! {
-                        return #crate_name::resolver_utils::resolve_field_async(
-                            ctx,
-                            self.#field_ident(ctx, #(#use_params),*)
-                        )
-                        .await;
+                    if cfg!(feature = "boxed-trait") {
+                        // Erase the resolver future and its value so the
+                        // library-side driver compiles once instead of once
+                        // per resolver method.
+                        quote! {
+                            return #crate_name::resolver_utils::resolve_field_async(
+                                ctx,
+                                ::std::boxed::Box::pin(async move {
+                                    self.#field_ident(ctx, #(#use_params),*)
+                                        .await
+                                        .map(|value| ::std::boxed::Box::new(value)
+                                            as ::std::boxed::Box<dyn #crate_name::resolver_utils::DynOutput + '_>)
+                                        .map_err(::std::convert::Into::<#crate_name::Error>::into)
+                                }),
+                            )
+                            .await;
+                        }
+                    } else {
+                        quote! {
+                            return #crate_name::resolver_utils::resolve_field_async(
+                                ctx,
+                                self.#field_ident(ctx, #(#use_params),*)
+                            )
+                            .await;
+                        }
                     }
                 } else {
                     match &ty {
