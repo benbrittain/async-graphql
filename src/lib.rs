@@ -241,6 +241,9 @@ pub use schema::{IntrospectionMode, Schema, SchemaBuilder, SchemaEnv};
 #[doc(hidden)]
 pub use static_assertions_next;
 pub use subscription::SubscriptionType;
+#[cfg(feature = "boxed-trait")]
+#[doc(hidden)]
+pub use subscription::resolve_subscription_stream;
 pub use types::*;
 pub use validation::{ValidationMode, ValidationResult, VisitorContext};
 pub use validators::CustomValidator;
