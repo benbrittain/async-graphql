@@ -621,6 +621,28 @@ impl<'a, T> ContextBase<'a, T> {
         self.resolve_input_value_inner(value.node, value.pos)
     }
 
+    /// Non-generic part of [`get_param_value`](Self::get_param_value): find
+    /// the argument and resolve variables, so the generic tail is only
+    /// `InputType::parse`.
+    fn resolve_param_value(
+        &self,
+        arguments: &[(Positioned<Name>, Positioned<InputValue>)],
+        name: &str,
+    ) -> ServerResult<Option<(Pos, Option<Value>)>> {
+        match arguments
+            .iter()
+            .find(|(n, _)| n.node.as_str() == name)
+            .map(|(_, value)| value)
+            .cloned()
+        {
+            Some(value) => {
+                let pos = value.pos;
+                Ok(Some((pos, self.resolve_input_value(value)?)))
+            }
+            None => Ok(None),
+        }
+    }
+
     #[doc(hidden)]
     fn get_param_value<Q: InputType>(
         &self,
@@ -628,19 +650,14 @@ impl<'a, T> ContextBase<'a, T> {
         name: &str,
         default: Option<fn() -> Q>,
     ) -> ServerResult<(Pos, Q)> {
-        let value = arguments
-            .iter()
-            .find(|(n, _)| n.node.as_str() == name)
-            .map(|(_, value)| value)
-            .cloned();
-        if value.is_none()
-            && let Some(default) = default
-        {
-            return Ok((Pos::default(), default()));
-        }
-        let (pos, value) = match value {
-            Some(value) => (value.pos, self.resolve_input_value(value)?),
-            None => (Pos::default(), None),
+        let (pos, value) = match self.resolve_param_value(arguments, name)? {
+            Some((pos, value)) => (pos, value),
+            None => {
+                if let Some(default) = default {
+                    return Ok((Pos::default(), default()));
+                }
+                (Pos::default(), None)
+            }
         };
         InputType::parse(value)
             .map(|value| (pos, value))
