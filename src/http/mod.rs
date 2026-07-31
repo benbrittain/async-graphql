@@ -2,6 +2,7 @@
 
 #[cfg(feature = "graphiql")]
 mod graphiql_source;
+#[cfg(feature = "multipart")]
 mod multipart;
 mod multipart_subscribe;
 mod websocket;
@@ -9,7 +10,6 @@ mod websocket;
 use futures_util::io::{AsyncRead, AsyncReadExt};
 #[cfg(feature = "graphiql")]
 pub use graphiql_source::{Credentials, GraphiQLSource};
-pub use multipart::MultipartOptions;
 pub use multipart_subscribe::{create_multipart_mixed_stream, is_accept_multipart_mixed};
 use serde::Deserialize;
 pub use websocket::{
@@ -19,6 +19,36 @@ pub use websocket::{
 };
 
 use crate::{BatchRequest, ParseRequestError, Request};
+
+/// Options for `receive_multipart`.
+#[derive(Default, Clone, Copy)]
+#[non_exhaustive]
+pub struct MultipartOptions {
+    /// The maximum file size.
+    pub max_file_size: Option<usize>,
+    /// The maximum number of files.
+    pub max_num_files: Option<usize>,
+}
+
+impl MultipartOptions {
+    /// Set maximum file size.
+    #[must_use]
+    pub fn max_file_size(self, size: usize) -> Self {
+        MultipartOptions {
+            max_file_size: Some(size),
+            ..self
+        }
+    }
+
+    /// Set maximum number of files.
+    #[must_use]
+    pub fn max_num_files(self, n: usize) -> Self {
+        MultipartOptions {
+            max_num_files: Some(n),
+            ..self
+        }
+    }
+}
 
 /// Parse a GraphQL request from a query string.
 pub fn parse_query_string(input: &str) -> Result<Request, ParseRequestError> {
@@ -70,6 +100,9 @@ pub async fn receive_batch_body(
     body: impl AsyncRead + Send,
     opts: MultipartOptions,
 ) -> Result<BatchRequest, ParseRequestError> {
+    #[cfg(not(feature = "multipart"))]
+    let _ = opts;
+
     // if no content-type header is set, we default to json
     let content_type = content_type
         .as_ref()
@@ -81,12 +114,19 @@ pub async fn receive_batch_body(
     match (content_type.type_(), content_type.subtype()) {
         // try to use multipart
         (mime::MULTIPART, _) => {
-            if let Some(boundary) = content_type.get_param("boundary") {
-                multipart::receive_batch_multipart(body, boundary.to_string(), opts).await
-            } else {
-                Err(ParseRequestError::InvalidMultipart(
-                    multer::Error::NoBoundary,
-                ))
+            #[cfg(feature = "multipart")]
+            {
+                if let Some(boundary) = content_type.get_param("boundary") {
+                    multipart::receive_batch_multipart(body, boundary.to_string(), opts).await
+                } else {
+                    Err(ParseRequestError::InvalidMultipart(
+                        multer::Error::NoBoundary,
+                    ))
+                }
+            }
+            #[cfg(not(feature = "multipart"))]
+            {
+                Err(ParseRequestError::UnsupportedMultipart)
             }
         }
         // application/json (currently)

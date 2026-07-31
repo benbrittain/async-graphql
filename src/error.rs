@@ -346,8 +346,14 @@ pub enum ParseRequestError {
     InvalidFilesMap(Box<dyn std::error::Error + Send + Sync>),
 
     /// The request's multipart data was invalid.
+    #[cfg(feature = "multipart")]
     #[error("Invalid multipart data")]
     InvalidMultipart(multer::Error),
+
+    /// The request used multipart, but the `multipart` feature is not
+    /// enabled.
+    #[error("Multipart requests are not supported")]
+    UnsupportedMultipart,
 
     /// Missing "operators" part for multipart request.
     #[error("Missing \"operators\" part")]
@@ -375,6 +381,7 @@ pub enum ParseRequestError {
     UnsupportedBatch,
 }
 
+#[cfg(feature = "multipart")]
 impl From<multer::Error> for ParseRequestError {
     fn from(err: multer::Error) -> Self {
         match err {

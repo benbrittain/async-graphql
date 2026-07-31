@@ -9,37 +9,8 @@ use futures_util::{io::AsyncRead, stream::Stream};
 use multer::{Constraints, Multipart, SizeLimit};
 use pin_project_lite::pin_project;
 
+use super::MultipartOptions;
 use crate::{BatchRequest, ParseRequestError, UploadValue};
-
-/// Options for `receive_multipart`.
-#[derive(Default, Clone, Copy)]
-#[non_exhaustive]
-pub struct MultipartOptions {
-    /// The maximum file size.
-    pub max_file_size: Option<usize>,
-    /// The maximum number of files.
-    pub max_num_files: Option<usize>,
-}
-
-impl MultipartOptions {
-    /// Set maximum file size.
-    #[must_use]
-    pub fn max_file_size(self, size: usize) -> Self {
-        MultipartOptions {
-            max_file_size: Some(size),
-            ..self
-        }
-    }
-
-    /// Set maximum number of files.
-    #[must_use]
-    pub fn max_num_files(self, n: usize) -> Self {
-        MultipartOptions {
-            max_num_files: Some(n),
-            ..self
-        }
-    }
-}
 
 pub(super) async fn receive_batch_multipart(
     body: impl AsyncRead + Send,
