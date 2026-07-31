@@ -20,10 +20,11 @@ chrono = ["dep:chrono"]
 chrono-duration = ["dep:chrono", "dep:iso8601"]
 dataloader = ["dep:futures-channel", "dep:lru", "dep:scc"]
 decimal = ["dep:rust_decimal"]
-default = ["dynamic-schema", "tempfile", "graphiql"]
+default = ["dynamic-schema", "tempfile", "graphiql", "regex"]
 log = ["dep:log"]
 
 jiff = ["dep:jiff"]
+regex = ["dep:regex"]
 string_number = []
 tempfile = ["dep:blocking", "dep:tempfile"]
 secrecy = ["dep:secrecy"]
@@ -61,7 +62,6 @@ mime = "0.3.17"
 multer = "3.0.0"
 num-traits = "0.2.18"
 pin-project-lite = "0.2.14"
-regex = "1.10.4"
 serde.workspace = true
 serde_json.workspace = true
 static_assertions_next = "1.1.2"
@@ -72,6 +72,7 @@ http.workspace = true
 rustc-hash = "2.1.1"
 
 # Feature optional dependencies
+regex = { version = "1.10.4", optional = true }
 chrono = { version = "0.4.37", optional = true, default-features = false, features = [
   "clock",
   "std",

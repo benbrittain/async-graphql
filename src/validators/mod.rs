@@ -7,6 +7,7 @@ mod min_items;
 mod min_length;
 mod minimum;
 mod multiple_of;
+#[cfg(feature = "regex")]
 mod regex;
 
 pub use chars_max_length::chars_max_length;
@@ -19,6 +20,7 @@ pub use min_length::min_length;
 pub use minimum::minimum;
 pub use multiple_of::multiple_of;
 
+#[cfg(feature = "regex")]
 pub use self::regex::regex;
 use crate::{InputType, InputValueError};
 
