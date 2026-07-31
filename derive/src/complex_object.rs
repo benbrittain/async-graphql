@@ -179,7 +179,7 @@ pub fn generate(
             let field_desc_value = get_rustdoc(&method.attrs)?;
             let has_field_desc = field_desc_value.is_some();
             let field_desc = field_desc_value
-                .map(|s| quote! { ::std::option::Option::Some(::std::string::ToString::to_string(#s)) })
+                .map(|s| quote! { ::std::option::Option::Some(#s) })
                 .unwrap_or_else(|| quote! {::std::option::Option::None});
             let field_deprecation = gen_deprecation(&method_args.deprecation, &crate_name);
             let external = method_args.external;
@@ -190,32 +190,18 @@ pub fn generate(
                 TypeDirectiveLocation::FieldDefinition,
             );
             let override_from = match &method_args.override_from {
-                Some(from) => {
-                    quote! { ::std::option::Option::Some(::std::string::ToString::to_string(#from)) }
-                }
+                Some(from) => quote! { ::std::option::Option::Some(#from) },
                 None => quote! { ::std::option::Option::None },
             };
             let inaccessible = method_args.inaccessible;
-            let tags = method_args
-                .tags
-                .iter()
-                .map(|tag| quote!(::std::string::ToString::to_string(#tag)))
-                .collect::<Vec<_>>();
-            let requires_scopes = method_args
-                .requires_scopes
-                .iter()
-                .map(|scopes| quote!(::std::string::ToString::to_string(#scopes)))
-                .collect::<Vec<_>>();
+            let tags = &method_args.tags;
+            let requires_scopes = &method_args.requires_scopes;
             let requires = match &method_args.requires {
-                Some(requires) => {
-                    quote! { ::std::option::Option::Some(::std::string::ToString::to_string(#requires)) }
-                }
+                Some(requires) => quote! { ::std::option::Option::Some(#requires) },
                 None => quote! { ::std::option::Option::None },
             };
             let provides = match &method_args.provides {
-                Some(provides) => {
-                    quote! { ::std::option::Option::Some(::std::string::ToString::to_string(#provides)) }
-                }
+                Some(provides) => quote! { ::std::option::Option::Some(#provides) },
                 None => quote! { ::std::option::Option::None },
             };
             let cache_control = {
@@ -284,8 +270,8 @@ pub fn generate(
                 let default = generate_default(default, default_with)?;
                 let schema_default = default.as_ref().map(|value| {
                     quote! {
-                        ::std::option::Option::Some(::std::string::ToString::to_string(
-                            &<#ty as #crate_name::InputType>::to_value(&#value)
+                        ::std::option::Option::Some(|| ::std::string::ToString::to_string(
+                            &<#ty as #crate_name::InputType>::to_value(&(#value))
                         ))
                     }
                 });
@@ -293,10 +279,6 @@ pub fn generate(
                 let has_visible = visible.is_some();
                 let visible = visible_fn(visible);
                 let has_tags = !tags.is_empty();
-                let tags = tags
-                    .iter()
-                    .map(|tag| quote!(::std::string::ToString::to_string(#tag)))
-                    .collect::<Vec<_>>();
                 let has_directives = !directives.is_empty();
                 let directives = gen_directive_calls(
                     &crate_name,
@@ -310,7 +292,7 @@ pub fn generate(
                 if has_desc {
                     let desc = desc.as_ref().expect("checked desc");
                     arg_sets.push(quote! {
-                        arg.description = ::std::option::Option::Some(::std::string::ToString::to_string(#desc));
+                        arg.description = ::std::option::Option::Some(#desc);
                     });
                 }
                 if let Some(schema_default) = schema_default {
@@ -326,24 +308,25 @@ pub fn generate(
                     arg_sets.push(quote!(arg.inaccessible = true;));
                 }
                 if has_tags {
-                    arg_sets.push(quote!(arg.tags = ::std::vec![ #(#tags),* ];));
+                    arg_sets.push(quote!(arg.tags = &[ #(#tags),* ];));
                 }
                 if *secret {
                     arg_sets.push(quote!(arg.is_secret = true;));
                 }
                 if has_directives {
-                    arg_sets
-                        .push(quote!(arg.directive_invocations = ::std::vec![ #(#directives),* ];));
+                    arg_sets.push(
+                        quote!(arg.directive_invocations = ::std::option::Option::Some(|registry| ::std::vec![ #(#directives),* ]);),
+                    );
                 }
 
                 schema_args.push(quote! {
                     {
-                        let mut arg = #crate_name::registry::MetaInputValue::new(
-                            ::std::string::ToString::to_string(#name),
-                            <#ty as #crate_name::InputType>::create_type_info(registry),
+                        let mut arg = #crate_name::registry::MetaInputValueTable::new(
+                            #name,
+                            <#ty as #crate_name::InputType>::create_type_info,
                         );
                         #(#arg_sets)*
-                        field.args.insert(::std::string::ToString::to_string(#name), arg);
+                        field.args.push(arg);
                     }
                 });
 
@@ -462,7 +445,7 @@ pub fn generate(
                 field_sets.push(quote!(field.inaccessible = true;));
             }
             if has_tags {
-                field_sets.push(quote!(field.tags = ::std::vec![ #(#tags),* ];));
+                field_sets.push(quote!(field.tags = &[ #(#tags),* ];));
             }
             if has_override_from {
                 field_sets.push(quote!(field.override_from = #override_from;));
@@ -474,23 +457,24 @@ pub fn generate(
                 field_sets.push(quote!(field.compute_complexity = #complexity;));
             }
             if has_directives {
-                field_sets
-                    .push(quote!(field.directive_invocations = ::std::vec![ #(#directives),* ];));
+                field_sets.push(
+                    quote!(field.directive_invocations = ::std::option::Option::Some(|registry| ::std::vec![ #(#directives),* ]);),
+                );
             }
             if has_requires_scopes {
-                field_sets
-                    .push(quote!(field.requires_scopes = ::std::vec![ #(#requires_scopes),* ];));
+                field_sets.push(quote!(field.requires_scopes = &[ #(#requires_scopes),* ];));
             }
 
             schema_fields.push(quote! {
                 #(#cfg_attrs)*
                 {
-                    let mut field = #crate_name::registry::MetaField::new(
-                        ::std::string::ToString::to_string(#field_name),
-                        <#schema_ty as #crate_name::OutputType>::create_type_info(registry),
+                    let mut field = #crate_name::registry::MetaFieldTable::new(
+                        #field_name,
+                        <#schema_ty as #crate_name::OutputType>::create_type_info,
                     );
                     #(#schema_args)*
                     #(#field_sets)*
+                    let field = #crate_name::registry::build_meta_field(registry, field);
                     fields.push((::std::string::ToString::to_string(#field_name), field));
                 }
             });

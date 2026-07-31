@@ -285,6 +285,163 @@ impl MetaField {
     }
 }
 
+/// Declarative description of an object field, emitted by the derive macros.
+///
+/// Generated `create_type_info` bodies fill in dense literal data here and
+/// call [`insert_meta_field`]; the conversion into a [`MetaField`] (string
+/// allocation, argument map construction, directive registration) is compiled
+/// once in this crate instead of once per GraphQL type.
+#[doc(hidden)]
+pub struct MetaFieldTable {
+    pub name: &'static str,
+    pub description: Option<&'static str>,
+    pub args: Vec<MetaInputValueTable>,
+    pub ty: fn(&mut Registry) -> String,
+    pub deprecation: Deprecation,
+    pub cache_control: CacheControl,
+    pub external: bool,
+    pub requires: Option<&'static str>,
+    pub provides: Option<&'static str>,
+    pub visible: Option<MetaVisibleFn>,
+    pub shareable: bool,
+    pub inaccessible: bool,
+    pub tags: &'static [&'static str],
+    pub override_from: Option<&'static str>,
+    pub compute_complexity: Option<ComputeComplexityFn>,
+    pub directive_invocations: Option<fn(&mut Registry) -> Vec<MetaDirectiveInvocation>>,
+    pub requires_scopes: &'static [&'static str],
+}
+
+impl MetaFieldTable {
+    #[doc(hidden)]
+    pub fn new(name: &'static str, ty: fn(&mut Registry) -> String) -> Self {
+        Self {
+            name,
+            description: None,
+            args: Vec::new(),
+            ty,
+            deprecation: Deprecation::NoDeprecated,
+            cache_control: Default::default(),
+            external: false,
+            requires: None,
+            provides: None,
+            visible: None,
+            shareable: false,
+            inaccessible: false,
+            tags: &[],
+            override_from: None,
+            compute_complexity: None,
+            directive_invocations: None,
+            requires_scopes: &[],
+        }
+    }
+}
+
+/// Declarative description of a field argument or input value, emitted by the
+/// derive macros. See [`MetaFieldTable`].
+#[doc(hidden)]
+pub struct MetaInputValueTable {
+    pub name: &'static str,
+    pub description: Option<&'static str>,
+    pub ty: fn(&mut Registry) -> String,
+    pub deprecation: Deprecation,
+    pub default_value: Option<fn() -> String>,
+    pub visible: Option<MetaVisibleFn>,
+    pub inaccessible: bool,
+    pub tags: &'static [&'static str],
+    pub is_secret: bool,
+    pub directive_invocations: Option<fn(&mut Registry) -> Vec<MetaDirectiveInvocation>>,
+}
+
+impl MetaInputValueTable {
+    #[doc(hidden)]
+    pub fn new(name: &'static str, ty: fn(&mut Registry) -> String) -> Self {
+        Self {
+            name,
+            description: None,
+            ty,
+            deprecation: Deprecation::NoDeprecated,
+            default_value: None,
+            visible: None,
+            inaccessible: false,
+            tags: &[],
+            is_secret: false,
+            directive_invocations: None,
+        }
+    }
+}
+
+/// Build a [`MetaField`] from its table form.
+#[doc(hidden)]
+pub fn build_meta_field(registry: &mut Registry, entry: MetaFieldTable) -> MetaField {
+    let mut args = IndexMap::with_capacity(entry.args.len());
+    for arg in entry.args {
+        let arg = build_meta_input_value(registry, arg);
+        args.insert(arg.name.clone(), arg);
+    }
+    MetaField {
+        name: entry.name.to_string(),
+        description: entry.description.map(Into::into),
+        args,
+        ty: (entry.ty)(registry),
+        deprecation: entry.deprecation,
+        cache_control: entry.cache_control,
+        external: entry.external,
+        requires: entry.requires.map(Into::into),
+        provides: entry.provides.map(Into::into),
+        visible: entry.visible,
+        shareable: entry.shareable,
+        inaccessible: entry.inaccessible,
+        tags: entry.tags.iter().map(|tag| tag.to_string()).collect(),
+        override_from: entry.override_from.map(Into::into),
+        compute_complexity: entry.compute_complexity,
+        directive_invocations: entry
+            .directive_invocations
+            .map(|f| f(registry))
+            .unwrap_or_default(),
+        requires_scopes: entry
+            .requires_scopes
+            .iter()
+            .map(|scope| scope.to_string())
+            .collect(),
+    }
+}
+
+/// Build a [`MetaInputValue`] from its table form.
+#[doc(hidden)]
+pub fn build_meta_input_value(
+    registry: &mut Registry,
+    entry: MetaInputValueTable,
+) -> MetaInputValue {
+    MetaInputValue {
+        name: entry.name.to_string(),
+        description: entry.description.map(Into::into),
+        ty: (entry.ty)(registry),
+        deprecation: entry.deprecation,
+        default_value: entry.default_value.map(|f| f()),
+        visible: entry.visible,
+        inaccessible: entry.inaccessible,
+        tags: entry.tags.iter().map(|tag| tag.to_string()).collect(),
+        is_secret: entry.is_secret,
+        directive_invocations: entry
+            .directive_invocations
+            .map(|f| f(registry))
+            .unwrap_or_default(),
+    }
+}
+
+/// Build a field from its table form and insert it into `fields`, preserving
+/// declaration order.
+#[doc(hidden)]
+pub fn insert_meta_field(
+    registry: &mut Registry,
+    fields: &mut IndexMap<String, MetaField>,
+    entry: MetaFieldTable,
+) {
+    let field = build_meta_field(registry, entry);
+    fields.insert(field.name.clone(), field);
+}
+
 #[derive(Clone)]
 pub struct MetaEnumValue {
     pub name: String,

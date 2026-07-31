@@ -160,38 +160,24 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
         let field_desc_value = get_rustdoc(&field.attrs)?;
         let has_field_desc = field_desc_value.is_some();
         let field_desc = field_desc_value
-            .map(|s| quote! {::std::option::Option::Some(::std::string::ToString::to_string(#s))})
+            .map(|s| quote! {::std::option::Option::Some(#s)})
             .unwrap_or_else(|| quote! {::std::option::Option::None});
         let field_deprecation = gen_deprecation(&field.deprecation, &crate_name);
         let external = field.external;
         let shareable = field.shareable;
         let inaccessible = field.inaccessible;
-        let tags = field
-            .tags
-            .iter()
-            .map(|tag| quote!(::std::string::ToString::to_string(#tag)))
-            .collect::<Vec<_>>();
-        let requires_scopes = field
-            .requires_scopes
-            .iter()
-            .map(|scopes| quote!(::std::string::ToString::to_string(#scopes)))
-            .collect::<Vec<_>>();
+        let tags = &field.tags;
+        let requires_scopes = &field.requires_scopes;
         let override_from = match &field.override_from {
-            Some(from) => {
-                quote! { ::std::option::Option::Some(::std::string::ToString::to_string(#from)) }
-            }
+            Some(from) => quote! { ::std::option::Option::Some(#from) },
             None => quote! { ::std::option::Option::None },
         };
         let requires = match &field.requires {
-            Some(requires) => {
-                quote! { ::std::option::Option::Some(::std::string::ToString::to_string(#requires)) }
-            }
+            Some(requires) => quote! { ::std::option::Option::Some(#requires) },
             None => quote! { ::std::option::Option::None },
         };
         let provides = match &field.provides {
-            Some(provides) => {
-                quote! { ::std::option::Option::Some(::std::string::ToString::to_string(#provides)) }
-            }
+            Some(provides) => quote! { ::std::option::Option::Some(#provides) },
             None => quote! { ::std::option::Option::None },
         };
         let ty = if let Some(derived) = derived {
@@ -282,7 +268,7 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
                 field_sets.push(quote!(field.inaccessible = true;));
             }
             if has_tags {
-                field_sets.push(quote!(field.tags = ::std::vec![ #(#tags),* ];));
+                field_sets.push(quote!(field.tags = &[ #(#tags),* ];));
             }
             if has_override_from {
                 field_sets.push(quote!(field.override_from = #override_from;));
@@ -294,21 +280,23 @@ pub fn generate(object_args: &args::SimpleObject) -> GeneratorResult<TokenStream
                 field_sets.push(quote!(field.compute_complexity = #complexity;));
             }
             if has_directives {
-                field_sets
-                    .push(quote!(field.directive_invocations = ::std::vec![ #(#directives),* ];));
+                field_sets.push(
+                    quote!(field.directive_invocations = ::std::option::Option::Some(|registry| ::std::vec![ #(#directives),* ]);),
+                );
             }
             if has_requires_scopes {
-                field_sets
-                    .push(quote!(field.requires_scopes = ::std::vec![ #(#requires_scopes),* ];));
+                field_sets.push(quote!(field.requires_scopes = &[ #(#requires_scopes),* ];));
             }
 
             schema_fields.push(quote! {
-                let mut field = #crate_name::registry::MetaField::new(
-                    ::std::string::ToString::to_string(#field_name),
-                    <#ty as #crate_name::OutputType>::create_type_info(registry),
-                );
-                #(#field_sets)*
-                fields.insert(::std::string::ToString::to_string(#field_name), field);
+                {
+                    let mut field = #crate_name::registry::MetaFieldTable::new(
+                        #field_name,
+                        <#ty as #crate_name::OutputType>::create_type_info,
+                    );
+                    #(#field_sets)*
+                    #crate_name::registry::insert_meta_field(registry, &mut fields, field);
+                }
             });
         } else {
             schema_fields.push(quote! {
