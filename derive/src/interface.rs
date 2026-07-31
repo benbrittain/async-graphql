@@ -13,14 +13,13 @@ use crate::{
     },
     output_type::OutputType,
     utils::{
-        GeneratorResult, RemoveLifetime, gen_boxed_trait, gen_deprecation, gen_directive_calls,
-        generate_default, get_crate_path, get_rustdoc, visible_fn,
+        GeneratorResult, RemoveLifetime, gen_deprecation, gen_directive_calls, generate_default,
+        get_crate_path, get_rustdoc, method_resolve, method_resolve_field, visible_fn,
     },
 };
 
 pub fn generate(interface_args: &args::Interface) -> GeneratorResult<TokenStream> {
     let crate_name = get_crate_path(&interface_args.crate_path, interface_args.internal);
-    let boxed_trait = gen_boxed_trait(&crate_name);
     let ident = &interface_args.ident;
     let type_params = interface_args.generics.type_params().collect::<Vec<_>>();
     let (impl_generics, ty_generics, where_clause) = interface_args.generics.split_for_impl();
@@ -487,6 +486,18 @@ pub fn generate(interface_args: &args::Interface) -> GeneratorResult<TokenStream
 
     let visible = visible_fn(&interface_args.visible);
     let field_count = schema_fields.len();
+    let resolve_field_impl = method_resolve_field(
+        &crate_name,
+        &quote! {
+            #(#resolvers)*
+            ::std::result::Result::Ok(::std::option::Option::None)
+        },
+    );
+    let resolve_impl = method_resolve(
+        &crate_name,
+        &quote! { #crate_name::resolver_utils::resolve_container(ctx, self).await },
+    );
+
     let expanded = quote! {
         #(#type_into_impls)*
 
@@ -496,12 +507,8 @@ pub fn generate(interface_args: &args::Interface) -> GeneratorResult<TokenStream
         }
 
         #[allow(clippy::all, clippy::pedantic)]
-        #boxed_trait
         impl #impl_generics #crate_name::resolver_utils::ContainerType for #ident #ty_generics #where_clause {
-            async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
-                #(#resolvers)*
-                ::std::result::Result::Ok(::std::option::Option::None)
-            }
+            #resolve_field_impl
 
             fn collect_all_fields<'__life>(&'__life self, ctx: &#crate_name::ContextSelectionSet<'__life>, fields: &mut #crate_name::resolver_utils::Fields<'__life>) -> #crate_name::ServerResult<()> {
                 match self {
@@ -511,7 +518,6 @@ pub fn generate(interface_args: &args::Interface) -> GeneratorResult<TokenStream
         }
 
         #[allow(clippy::all, clippy::pedantic)]
-        #boxed_trait
         impl #impl_generics #crate_name::OutputType for #ident #ty_generics #where_clause {
             fn type_name() -> ::std::borrow::Cow<'static, ::std::primitive::str> {
                 #gql_typename
@@ -550,13 +556,7 @@ pub fn generate(interface_args: &args::Interface) -> GeneratorResult<TokenStream
                 })
             }
 
-            async fn resolve(
-                &self,
-                ctx: &#crate_name::ContextSelectionSet<'_>,
-                _field: &#crate_name::Positioned<#crate_name::parser::types::Field>,
-            ) -> #crate_name::ServerResult<#crate_name::Value> {
-                #crate_name::resolver_utils::resolve_container(ctx, self).await
-            }
+            #resolve_impl
         }
 
         impl #impl_generics #crate_name::InterfaceType for #ident #ty_generics #where_clause {}

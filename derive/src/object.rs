@@ -12,10 +12,10 @@ use crate::{
     args::{self, RenameRuleExt, RenameTarget, Resolvability, TypeDirectiveLocation},
     output_type::OutputType,
     utils::{
-        GeneratorResult, extract_input_args, gen_boxed_trait, gen_deprecation, gen_directive_calls,
+        GeneratorResult, extract_input_args, gen_deprecation, gen_directive_calls,
         generate_default, generate_guards, get_cfg_attrs, get_crate_path, get_rustdoc,
-        get_type_path_and_name, parse_complexity_expr, parse_graphql_attrs, remove_graphql_attrs,
-        visible_fn,
+        get_type_path_and_name, method_find_entity, method_resolve, method_resolve_field,
+        parse_complexity_expr, parse_graphql_attrs, remove_graphql_attrs, visible_fn,
     },
     validators::Validators,
 };
@@ -25,7 +25,6 @@ pub fn generate(
     item_impl: &mut ItemImpl,
 ) -> GeneratorResult<TokenStream> {
     let crate_name = get_crate_path(&object_args.crate_path, object_args.internal);
-    let boxed_trait = gen_boxed_trait(&crate_name);
     let (self_ty, self_name) = get_type_path_and_name(item_impl.self_ty.as_ref())?;
     let (impl_generics, _, where_clause) = item_impl.generics.split_for_impl();
     let extends = object_args.extends;
@@ -848,17 +847,28 @@ pub fn generate(
     let has_entities = !find_entities.is_empty();
     let find_entity_impl = has_entities.then(|| {
         let find_entities_iter = find_entities.iter().map(|(_, code)| code);
-        quote! {
-            async fn find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
+        method_find_entity(
+            &crate_name,
+            &quote! {
                 if let ::std::option::Option::Some((params, typename)) =
                     #crate_name::resolver_utils::find_entity_params(ctx, params)?
                 {
                     #(#find_entities_iter)*
                 }
                 ::std::result::Result::Ok(::std::option::Option::None)
-            }
-        }
+            },
+        )
     });
+
+    let resolve_field_impl = method_resolve_field(
+        &crate_name,
+        &quote! {
+            #resolve_field_resolver_match
+            #(#flattened_resolvers)*
+            ::std::result::Result::Ok(::std::option::Option::None)
+        },
+    );
+    let resolve_impl = method_resolve(&crate_name, &resolve_container);
 
     let expanded = if object_args.concretes.is_empty() {
         quote! {
@@ -869,19 +879,13 @@ pub fn generate(
             const _: () = {
                 #[allow(clippy::all, clippy::pedantic, clippy::suspicious_else_formatting)]
                 #[allow(unused_braces, unused_variables, unused_parens, unused_mut)]
-                #boxed_trait
                 impl #impl_generics #crate_name::resolver_utils::ContainerType for #self_ty #where_clause {
-                    async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
-                        #resolve_field_resolver_match
-                        #(#flattened_resolvers)*
-                        ::std::result::Result::Ok(::std::option::Option::None)
-                    }
+                    #resolve_field_impl
 
                     #find_entity_impl
                 }
 
                 #[allow(clippy::all, clippy::pedantic)]
-                #boxed_trait
                 impl #impl_generics #crate_name::OutputType for #self_ty #where_clause {
                     fn type_name() -> ::std::borrow::Cow<'static, ::std::primitive::str> {
                         #gql_typename
@@ -905,13 +909,7 @@ pub fn generate(
                         ty
                     }
 
-                    async fn resolve(
-                        &self,
-                        ctx: &#crate_name::ContextSelectionSet<'_>,
-                        _field: &#crate_name::Positioned<#crate_name::parser::types::Field>
-                    ) -> #crate_name::ServerResult<#crate_name::Value> {
-                        #resolve_container
-                    }
+                    #resolve_impl
                 }
 
                 impl #impl_generics #crate_name::ObjectType for #self_ty #where_clause {}
@@ -934,12 +932,15 @@ pub fn generate(
             }
         });
         let concrete_find_entity = has_entities.then(|| {
-            quote! {
-                async fn find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
-                    self.__internal_find_entity(ctx, params).await
-                }
-            }
+            method_find_entity(
+                &crate_name,
+                &quote! { self.__internal_find_entity(ctx, params).await },
+            )
         });
+        let concrete_resolve_field = method_resolve_field(
+            &crate_name,
+            &quote! { self.__internal_resolve_field(ctx).await },
+        );
 
         codes.push(quote! {
             #item_impl
@@ -997,16 +998,12 @@ pub fn generate(
             };
 
             codes.push(quote! {
-                #boxed_trait
                 impl #def_bounds #crate_name::resolver_utils::ContainerType for #concrete_type {
-                    async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
-                        self.__internal_resolve_field(ctx).await
-                    }
+                    #concrete_resolve_field
 
                     #concrete_find_entity
                 }
 
-                #boxed_trait
                 impl #def_bounds #crate_name::OutputType for #concrete_type {
                     fn type_name() -> ::std::borrow::Cow<'static, ::std::primitive::str> {
                         ::std::borrow::Cow::Borrowed(#gql_typename)
@@ -1016,13 +1013,7 @@ pub fn generate(
                         Self::__internal_create_type_info(registry, #gql_typename)
                     }
 
-                    async fn resolve(
-                        &self,
-                        ctx: &#crate_name::ContextSelectionSet<'_>,
-                        _field: &#crate_name::Positioned<#crate_name::parser::types::Field>
-                    ) -> #crate_name::ServerResult<#crate_name::Value> {
-                        #resolve_container
-                    }
+                    #resolve_impl
                 }
 
                 impl #def_bounds #crate_name::ObjectType for #concrete_type {}

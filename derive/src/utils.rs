@@ -376,12 +376,157 @@ fn extract_directive_call_path(directive: &Expr) -> Option<syn::Path> {
     None
 }
 
-pub fn gen_boxed_trait(crate_name: &syn::Path) -> TokenStream {
-    if cfg!(feature = "boxed-trait") {
-        quote! {
-            #[#crate_name::async_trait::async_trait]
+/// Wrap a method body in the boxed form `#[async_trait]` would generate:
+/// pin the output type first (so bodies with early `return`s still infer),
+/// then `Box::pin(async move { ... })`.
+#[cfg(feature = "boxed-trait")]
+fn boxed_method_body(output: &TokenStream, body: &TokenStream) -> TokenStream {
+    quote! {
+        {
+            ::std::boxed::Box::pin(async move {
+                if let ::std::option::Option::Some(__ret) =
+                    ::std::option::Option::None::<#output>
+                {
+                    #[allow(unreachable_code)]
+                    return __ret;
+                }
+                let __ret: #output = { #body };
+                #[allow(unreachable_code)]
+                __ret
+            })
         }
-    } else {
-        quote! {}
+    }
+}
+
+#[cfg(feature = "boxed-trait")]
+fn boxed_return_type(output: &TokenStream) -> TokenStream {
+    quote! {
+        ::std::pin::Pin<::std::boxed::Box<
+            dyn ::std::future::Future<Output = #output> + ::std::marker::Send + 'async_trait,
+        >>
+    }
+}
+
+/// Emit a `ContainerType::resolve_field` / `ComplexObject::resolve_field`
+/// method with the given body.
+///
+/// Under `boxed-trait` this expands directly to the boxed form the
+/// `#[async_trait]` proc macro would produce for the trait definition, so
+/// generated impls no longer route through a second proc-macro pass that
+/// re-parses and re-emits every impl in downstream crates.
+pub fn method_resolve_field(crate_name: &syn::Path, body: &TokenStream) -> TokenStream {
+    let output = quote! {
+        #crate_name::ServerResult<::std::option::Option<#crate_name::Value>>
+    };
+
+    #[cfg(feature = "boxed-trait")]
+    {
+        let ret = boxed_return_type(&output);
+        let boxed_body = boxed_method_body(&output, body);
+        quote! {
+            #[allow(unused_variables, clippy::type_complexity, clippy::type_repetition_in_bounds)]
+            fn resolve_field<'life0, 'life1, 'life2, 'async_trait>(
+                &'life0 self,
+                ctx: &'life1 #crate_name::Context<'life2>,
+            ) -> #ret
+            where
+                'life0: 'async_trait,
+                'life1: 'async_trait,
+                'life2: 'async_trait,
+                Self: 'async_trait,
+            #boxed_body
+        }
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
+    quote! {
+        #[allow(unused_variables)]
+        async fn resolve_field(
+            &self,
+            ctx: &#crate_name::Context<'_>,
+        ) -> #output {
+            #body
+        }
+    }
+}
+
+/// Emit a `ContainerType::find_entity` method with the given body.
+///
+/// The trait declares this method with a default body, so the async-trait
+/// desugaring carries a `Self: Sync` bound that must be repeated here.
+pub fn method_find_entity(crate_name: &syn::Path, body: &TokenStream) -> TokenStream {
+    let output = quote! {
+        #crate_name::ServerResult<::std::option::Option<#crate_name::Value>>
+    };
+
+    #[cfg(feature = "boxed-trait")]
+    {
+        let ret = boxed_return_type(&output);
+        let boxed_body = boxed_method_body(&output, body);
+        quote! {
+            #[allow(unused_variables, clippy::type_complexity, clippy::type_repetition_in_bounds)]
+            fn find_entity<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+                &'life0 self,
+                ctx: &'life1 #crate_name::Context<'life2>,
+                params: &'life3 #crate_name::Value,
+            ) -> #ret
+            where
+                'life0: 'async_trait,
+                'life1: 'async_trait,
+                'life2: 'async_trait,
+                'life3: 'async_trait,
+                Self: ::std::marker::Sync + 'async_trait,
+            #boxed_body
+        }
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
+    quote! {
+        #[allow(unused_variables)]
+        async fn find_entity(
+            &self,
+            ctx: &#crate_name::Context<'_>,
+            params: &#crate_name::Value,
+        ) -> #output {
+            #body
+        }
+    }
+}
+
+/// Emit an `OutputType::resolve` method with the given body.
+pub fn method_resolve(crate_name: &syn::Path, body: &TokenStream) -> TokenStream {
+    let output = quote! { #crate_name::ServerResult<#crate_name::Value> };
+
+    #[cfg(feature = "boxed-trait")]
+    {
+        let ret = boxed_return_type(&output);
+        let boxed_body = boxed_method_body(&output, body);
+        quote! {
+            #[allow(unused_variables, clippy::type_complexity, clippy::type_repetition_in_bounds)]
+            fn resolve<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+                &'life0 self,
+                ctx: &'life1 #crate_name::ContextSelectionSet<'life2>,
+                _field: &'life3 #crate_name::Positioned<#crate_name::parser::types::Field>,
+            ) -> #ret
+            where
+                'life0: 'async_trait,
+                'life1: 'async_trait,
+                'life2: 'async_trait,
+                'life3: 'async_trait,
+                Self: 'async_trait,
+            #boxed_body
+        }
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
+    quote! {
+        #[allow(unused_variables)]
+        async fn resolve(
+            &self,
+            ctx: &#crate_name::ContextSelectionSet<'_>,
+            _field: &#crate_name::Positioned<#crate_name::parser::types::Field>,
+        ) -> #output {
+            #body
+        }
     }
 }

@@ -7,8 +7,8 @@ use syn::{Error, LitInt};
 use crate::{
     args::{self, RenameTarget, TypeDirectiveLocation},
     utils::{
-        GeneratorResult, gen_boxed_trait, gen_directive_calls, get_crate_path, get_rustdoc,
-        visible_fn,
+        GeneratorResult, gen_directive_calls, get_crate_path, get_rustdoc, method_find_entity,
+        method_resolve, method_resolve_field, visible_fn,
     },
 };
 
@@ -35,7 +35,6 @@ pub(crate) fn build_merge_tree_type(
 
 pub fn generate(object_args: &args::MergedObject) -> GeneratorResult<TokenStream> {
     let crate_name = get_crate_path(&object_args.crate_path, object_args.internal);
-    let boxed_trait = gen_boxed_trait(&crate_name);
     let ident = &object_args.ident;
     let (impl_generics, ty_generics, where_clause) = object_args.generics.split_for_impl();
     let extends = object_args.extends;
@@ -141,23 +140,31 @@ pub fn generate(object_args: &args::MergedObject) -> GeneratorResult<TokenStream
         quote! { #crate_name::resolver_utils::resolve_container(ctx, self).await }
     };
 
+    let resolve_field_impl = method_resolve_field(
+        &crate_name,
+        &quote! {
+            #flat_resolve_field
+            ::std::result::Result::Ok(::std::option::Option::None)
+        },
+    );
+    let find_entity_impl = method_find_entity(
+        &crate_name,
+        &quote! {
+            #flat_find_entity
+            ::std::result::Result::Ok(::std::option::Option::None)
+        },
+    );
+    let resolve_impl = method_resolve(&crate_name, &resolve_container);
+
     let expanded = quote! {
         #[allow(clippy::all, clippy::pedantic)]
-        #boxed_trait
         impl #impl_generics #crate_name::resolver_utils::ContainerType for #ident #ty_generics #where_clause {
-            async fn resolve_field(&self, ctx: &#crate_name::Context<'_>) -> #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
-                #flat_resolve_field
-                ::std::result::Result::Ok(::std::option::Option::None)
-            }
+            #resolve_field_impl
 
-            async fn find_entity(&self, ctx: &#crate_name::Context<'_>, params: &#crate_name::Value) ->  #crate_name::ServerResult<::std::option::Option<#crate_name::Value>> {
-                #flat_find_entity
-                ::std::result::Result::Ok(::std::option::Option::None)
-            }
+            #find_entity_impl
         }
 
         #[allow(clippy::all, clippy::pedantic)]
-        #boxed_trait
         impl #impl_generics #crate_name::OutputType for #ident #ty_generics #where_clause {
             fn type_name() -> ::std::borrow::Cow<'static, ::std::primitive::str> {
                 #gql_typename
@@ -198,9 +205,7 @@ pub fn generate(object_args: &args::MergedObject) -> GeneratorResult<TokenStream
                 })
             }
 
-            async fn resolve(&self, ctx: &#crate_name::ContextSelectionSet<'_>, _field: &#crate_name::Positioned<#crate_name::parser::types::Field>) -> #crate_name::ServerResult<#crate_name::Value> {
-                #resolve_container
-            }
+            #resolve_impl
         }
 
         impl #impl_generics #crate_name::ObjectType for #ident #ty_generics #where_clause {}

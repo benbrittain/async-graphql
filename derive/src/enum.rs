@@ -6,14 +6,13 @@ use syn::{Error, ext::IdentExt};
 use crate::{
     args::{self, RenameRuleExt, RenameTarget, TypeDirectiveLocation},
     utils::{
-        GeneratorResult, gen_boxed_trait, gen_deprecation, gen_directive_calls, get_crate_path,
-        get_rustdoc, visible_fn,
+        GeneratorResult, gen_deprecation, gen_directive_calls, get_crate_path, get_rustdoc,
+        method_resolve, visible_fn,
     },
 };
 
 pub fn generate(enum_args: &args::Enum) -> GeneratorResult<TokenStream> {
     let crate_name = get_crate_path(&enum_args.crate_path, enum_args.internal);
-    let boxed_trait = gen_boxed_trait(&crate_name);
     let ident = &enum_args.ident;
     let e = match &enum_args.data {
         Data::Enum(e) => e,
@@ -233,6 +232,11 @@ pub fn generate(enum_args: &args::Enum) -> GeneratorResult<TokenStream> {
     if has_requires_scopes {
         enum_builder_calls.push(quote!(.requires_scopes(::std::vec![ #(#requires_scopes),* ])));
     }
+    let resolve_impl = method_resolve(
+        &crate_name,
+        &quote! { ::std::result::Result::Ok(#crate_name::resolver_utils::enum_value(*self)) },
+    );
+
     let expanded = quote! {
         #[allow(clippy::all, clippy::pedantic)]
         impl #crate_name::resolver_utils::EnumType for #ident {
@@ -288,7 +292,6 @@ pub fn generate(enum_args: &args::Enum) -> GeneratorResult<TokenStream> {
             }
         }
 
-        #boxed_trait
         impl #crate_name::OutputType for #ident {
             fn type_name() -> ::std::borrow::Cow<'static, ::std::primitive::str> {
                 Self::__type_name()
@@ -298,9 +301,7 @@ pub fn generate(enum_args: &args::Enum) -> GeneratorResult<TokenStream> {
                 Self::__create_type_info(registry)
             }
 
-            async fn resolve(&self, _: &#crate_name::ContextSelectionSet<'_>, _field: &#crate_name::Positioned<#crate_name::parser::types::Field>) -> #crate_name::ServerResult<#crate_name::Value> {
-                ::std::result::Result::Ok(#crate_name::resolver_utils::enum_value(*self))
-            }
+            #resolve_impl
         }
 
         impl ::std::convert::From<#ident> for #crate_name::Value {
