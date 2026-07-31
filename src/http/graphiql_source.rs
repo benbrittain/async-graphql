@@ -1,6 +1,4 @@
-use std::{collections::HashMap, fmt};
-
-use askama::Template;
+use std::{collections::HashMap, fmt, fmt::Write};
 
 /// Indicates whether the user agent should send or receive user credentials
 /// (cookies, basic http auth, etc.) from the other domain in the case of
@@ -56,8 +54,7 @@ impl fmt::Display for GraphiQLVersion<'_> {
 ///     .credentials(Credentials::Include)
 ///     .finish();
 /// ```
-#[derive(Default, Template)]
-#[template(path = "graphiql_source.jinja")]
+#[derive(Default)]
 pub struct GraphiQLSource<'a> {
     endpoint: &'a str,
     subscription_endpoint: Option<&'a str>,
@@ -134,7 +131,44 @@ impl<'a> GraphiQLSource<'a> {
 
     /// Returns a GraphiQL (v2) HTML page.
     pub fn finish(self) -> String {
-        self.render().expect("Failed to render template")
+        const TEMPLATE: &str = include_str!("../../templates/graphiql_source.html");
+
+        fn js_object(name: &str, entries: &HashMap<&str, &str>, out: &mut String) {
+            write!(out, "\n        {}: {{", name).unwrap();
+            let mut sorted: Vec<_> = entries.iter().collect();
+            sorted.sort();
+            for (key, value) in sorted {
+                write!(out, "\n          '{}': '{}',", key, value).unwrap();
+            }
+            out.push_str("\n        },");
+        }
+
+        let mut extra_options = String::new();
+        if let Some(subscription_endpoint) = self.subscription_endpoint {
+            write!(
+                extra_options,
+                "\n        subscriptionUrl: createUrl('{}'),",
+                subscription_endpoint
+            )
+            .unwrap();
+        }
+        if let Some(headers) = &self.headers {
+            js_object("headers", headers, &mut extra_options);
+        }
+        if let Some(ws_connection_params) = &self.ws_connection_params {
+            js_object(
+                "wsConnectionParams",
+                ws_connection_params,
+                &mut extra_options,
+            );
+        }
+
+        TEMPLATE
+            .replace("%TITLE%", self.title.unwrap_or("GraphiQL"))
+            .replace("%VERSION%", self.version.0)
+            .replace("%CREDENTIALS%", &self.credentials.to_string())
+            .replace("%ENDPOINT%", self.endpoint)
+            .replace("%FETCHER_EXTRA_OPTIONS%", &extra_options)
     }
 }
 
@@ -156,10 +190,8 @@ mod tests {
     <meta name="robots" content="noindex">
     <meta name="referrer" content="origin">
 
-    
-      <title>GraphiQL</title>
-    
-    
+    <title>GraphiQL</title>
+
     <style>
       body {
         margin: 0;
@@ -228,9 +260,6 @@ mod tests {
       const fetcher = createGraphiQLFetcher({
         url: createUrl('/'),
         fetch: customFetch,
-        
-        
-        
       });
       const plugins = [HISTORY_PLUGIN, explorerPlugin()];
 
@@ -252,7 +281,8 @@ mod tests {
       <div class="loading">Loading…</div>
     </div>
   </body>
-</html>"#]];
+</html>
+"#]];
 
         expected.indent(false);
         expected.assert_eq(&graphiql_source);
@@ -274,10 +304,8 @@ mod tests {
     <meta name="robots" content="noindex">
     <meta name="referrer" content="origin">
 
-    
-      <title>GraphiQL</title>
-    
-    
+    <title>GraphiQL</title>
+
     <style>
       body {
         margin: 0;
@@ -346,11 +374,7 @@ mod tests {
       const fetcher = createGraphiQLFetcher({
         url: createUrl('/'),
         fetch: customFetch,
-        
         subscriptionUrl: createUrl('/ws'),
-        
-        
-        
       });
       const plugins = [HISTORY_PLUGIN, explorerPlugin()];
 
@@ -372,7 +396,8 @@ mod tests {
       <div class="loading">Loading…</div>
     </div>
   </body>
-</html>"#]];
+</html>
+"#]];
 
         expected.indent(false);
         expected.assert_eq(&graphiql_source);
@@ -399,10 +424,8 @@ mod tests {
     <meta name="robots" content="noindex">
     <meta name="referrer" content="origin">
 
-    
-      <title>Awesome GraphiQL IDE Test</title>
-    
-    
+    <title>Awesome GraphiQL IDE Test</title>
+
     <style>
       body {
         margin: 0;
@@ -471,23 +494,13 @@ mod tests {
       const fetcher = createGraphiQLFetcher({
         url: createUrl('/'),
         fetch: customFetch,
-        
         subscriptionUrl: createUrl('/ws'),
-        
-        
         headers: {
-          
           'Authorization': 'Bearer [token]',
-          
-        }
-        
-        
+        },
         wsConnectionParams: {
-          
           'token': '[token]',
-          
-        }
-        
+        },
       });
       const plugins = [HISTORY_PLUGIN, explorerPlugin()];
 
@@ -509,7 +522,8 @@ mod tests {
       <div class="loading">Loading…</div>
     </div>
   </body>
-</html>"#]];
+</html>
+"#]];
 
         expected.indent(false);
         expected.assert_eq(&graphiql_source);
