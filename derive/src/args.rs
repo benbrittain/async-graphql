@@ -1042,11 +1042,18 @@ pub struct Directive {
     pub crate_path: Option<Path>,
 }
 
-#[derive(Debug, Copy, Clone, FromMeta, strum::Display)]
+#[derive(Debug, Copy, Clone, FromMeta)]
 #[darling(rename_all = "PascalCase")]
-#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 pub enum DirectiveLocation {
     Field,
+}
+
+impl std::fmt::Display for DirectiveLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DirectiveLocation::Field => f.write_str("FIELD"),
+        }
+    }
 }
 
 #[derive(FromMeta, Default)]
@@ -1067,9 +1074,8 @@ pub struct TypeDirective {
     pub crate_path: Option<Path>,
 }
 
-#[derive(Debug, Copy, Clone, FromMeta, strum::Display)]
+#[derive(Debug, Copy, Clone, FromMeta)]
 #[darling(rename_all = "PascalCase")]
-#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 pub enum TypeDirectiveLocation {
     ArgumentDefinition,
     Enum,
@@ -1079,6 +1085,21 @@ pub enum TypeDirectiveLocation {
     Object,
     InputObject,
     Interface,
+}
+
+impl std::fmt::Display for TypeDirectiveLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            TypeDirectiveLocation::ArgumentDefinition => "ARGUMENT_DEFINITION",
+            TypeDirectiveLocation::Enum => "ENUM",
+            TypeDirectiveLocation::EnumValue => "ENUM_VALUE",
+            TypeDirectiveLocation::FieldDefinition => "FIELD_DEFINITION",
+            TypeDirectiveLocation::InputFieldDefinition => "INPUT_FIELD_DEFINITION",
+            TypeDirectiveLocation::Object => "OBJECT",
+            TypeDirectiveLocation::InputObject => "INPUT_OBJECT",
+            TypeDirectiveLocation::Interface => "INTERFACE",
+        })
+    }
 }
 
 impl TypeDirectiveLocation {
