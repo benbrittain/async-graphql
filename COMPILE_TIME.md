@@ -5,8 +5,27 @@ the `boxed-trait` feature is enabled. Each finding documents the cause, the
 evidence, and the fix. Findings are ordered by expected impact within each
 section.
 
-Two of the fixes (D1, D2) are implemented in the working tree and validated;
-together they cut downstream schema-crate builds by ~36%.
+**Status: implemented.** Every fix below except L6 (parser rewrite — assessed
+and deferred, see its section) has landed, one commit per finding, on the
+`compile-time-fixes` branch. Final results for the benchmark schema crate:
+
+| Metric (leaf schema crate) | Baseline | Final | Δ |
+|---|---|---|---|
+| `cargo check` | 7.89 s | 3.75 s | **−52%** |
+| `cargo build` (dev) | 8.97 s | 5.86 s | **−35%** |
+| LLVM IR lines | 943,309 | 354,838 | **−62%** |
+| Monomorphized copies | 37,200 | 14,826 | **−60%** |
+| `#[async_trait]` re-expansions | 233 (1.49 MB) | 0 | −100% |
+| Macro-expanded volume | ~3.0 MB | ~2.0 MB | −34% |
+
+LLVM-lines trajectory by fix: 943 K → D1 525 K → D2 500 K → D3 494 K →
+D4+D5 451 K → D6 418 K → D1-follow-up 391 K → D7 355 K.
+
+Cold-build wins (Part L): regex stack (~3.3 s CPU), askama stack (~2.6 s CPU),
+multer/encoding_rs (~1 s CPU) now avoidable via features; pest,
+async-graphql-value, serde_json, and strum_macros dropped from the blocking
+proc-macro prefix. Both feature modes pass the full test suite (55 test
+binaries each).
 
 ## Methodology
 
@@ -45,7 +64,7 @@ Costs scale with (a) expanded token volume — borrowck, metadata, typecheck —
 and (b) the monomorphization graph — collector, codegen, metadata. Every fix
 below attacks one or both.
 
-### After fixes D1 + D2 (in working tree)
+### After fixes D1 + D2 (historical mid-point measurement)
 
 | Metric | Baseline | After | Δ |
 |---|---|---|---|
@@ -356,6 +375,11 @@ error paths) and the `extra-traits` feature; hand-write the two
 SCREAMING_SNAKE_CASE `Display` impls. Shaves both syn's own compile and two
 crates off the critical path.
 
+**Correction (implementation):** `darling_core` enables `syn/extra-traits`
+itself, so the feature stays on transitively while darling is used — only the
+strum removal materialized. Our manifest no longer requests `extra-traits`, so
+replacing darling would realize the rest.
+
 ### L5. `multer`/`encoding_rs` are hard dependencies
 
 **Cause.** Multipart upload support (`src/http/multipart.rs`) is
@@ -365,15 +389,27 @@ server accepts uploads.
 **Fix.** Feature-gate multipart (`multipart` in defaults to stay compatible).
 Users disabling it drop ~1 s CPU of deps.
 
-### L6. `pest`-based query parser
+### L6. `pest`-based query parser — assessed, deferred
 
 **Cause.** `async-graphql-parser` uses `pest` (0.47 s + grammar codegen), and
-sits on the critical path before both the main crate and (until L2 lands) the
-derive crate.
+sits on the critical path before the main crate (L2 removed it from the derive
+crate's prefix).
 
 **Fix.** Long-term: a hand-written recursive-descent lexer/parser (GraphQL's
-grammar is small and stable; this is also a runtime win). This is the biggest
-change in Part L for the smallest per-build return — last priority.
+grammar is small and stable; this is also a runtime win). The parser crate is
+only ~2.5 K lines including the AST, so this is a bounded project — but it is
+the biggest change in Part L for the smallest per-build return, and is
+deferred.
+
+**apollo-parser evaluated and rejected** (probed 2026-07-31): apollo-parser
+0.8 adds 13 packages including the `rowan` CST stack (`rowan`, `countme`,
+`text-size`, `hashbrown` 0.14, `rustc-hash` v1 duplicating our v2) *and*
+thiserror v2 pinned to **syn 3.0** — a second syn compiled in every downstream
+tree. Its cold build costs more than the pest stack it would replace, it
+produces a lossless CST that would need a conversion layer into the existing
+`Positioned<...>` AST (runtime cost, error-position churn across the test
+suite), and it is slower at runtime than direct-to-AST parsing. No
+compile-time win is available from that swap.
 
 ---
 
@@ -394,23 +430,32 @@ No library changes; worth documenting in the book's performance page:
 
 ---
 
-## Suggested order of attack
+## Implementation status
 
-| # | Item | Effort | Downstream gain (bench) | Status |
-|---|---|---|---|---|
-| 1 | D1 `resolve_list` boxing | S | −44% LLVM lines, −3.2 s build | ✅ in tree |
-| 2 | D2 `create_type` dyn closure | S | −25 K LLVM lines | ✅ in tree |
-| 3 | L2 drop parser dep from derive | S | cold-build prefix | verified |
-| 4 | D8 skip empty `find_entity` | S | ~7 K lines + shims | — |
-| 5 | L1 regex-lite / feature | S | −3.3 s CPU cold | — |
-| 6 | L4 syn/strum diet | S | cold prefix | — |
-| 7 | D3 de-async-trait generated impls | L | ~50% of expanded tokens; enables 8–9 | — |
-| 8 | D4 forwarding adapters (needs D3) | M | ~30 K lines + runtime allocs | — |
-| 9 | D5 `DynContainer` manual impl (needs D3) | S | ~19 K lines + 1 alloc/field | — |
-| 10 | D6 `resolve_field_async` erasure | M | ~25 K lines | — |
-| 11 | D7 table-driven `create_type_info` | L | ~50 K lines + metadata pass | — |
-| 12 | D10 subscription helper | M | per-subscription-field | — |
-| 14 | D9 getter opt-out, D11 param split | S | frontend on huge schemas | — |
-| 15 | L6 replace pest | L | 0.5–1 s cold | — |
+One commit per finding on the `compile-time-fixes` branch.
 
-S/M/L = small/medium/large implementation effort.
+| Item | Measured effect (bench) | Status |
+|---|---|---|
+| D1 `resolve_list` boxing | 943 K → 525 K LLVM lines | ✅ |
+| D2 `create_type` dyn closure | −25 K LLVM lines | ✅ |
+| D1-follow-up: dyn `resolve_list` driver | 418 K → 391 K LLVM lines | ✅ |
+| D3 de-async-trait generated impls | −1.2 MB expanded tokens (−40%) | ✅ |
+| D4 forwarding adapters | −43 K LLVM lines (with D5) | ✅ |
+| D5 `DynContainer` manual impl | (in D4 figure) + 1 alloc/field saved | ✅ |
+| D6 `resolve_field_async`/`DynOutput` erasure | 451 K → 418 K LLVM lines | ✅ |
+| D7 table-driven field registration | 391 K → 355 K LLVM lines | ✅ Object/SimpleObject/ComplexObject; interface/subscription/input-object still imperative (same recipe applies) |
+| D8 skip empty `find_entity` | ~7 K lines + shims | ✅ |
+| D9 `no_getters` opt-out | frontend-only (480 dead async fns in bench) | ✅ |
+| D10 subscription stream helper | ~70 expanded lines/field → 1 call | ✅ |
+| D11 `get_param_value` split | ~100 lines/copy | ✅ |
+| L1 `regex` feature gate (default on) | ~3.3 s CPU avoidable | ✅ |
+| L2 drop parser dep from derive | pest off proc-macro prefix | ✅ |
+| L3 askama removal | ~2.6 s CPU off default builds (+ fixes a missing-comma template bug) | ✅ |
+| L4 strum removal | strum_macros off prefix. `extra-traits` cannot be dropped: darling_core enables it | ✅ (partial) |
+| L5 `multipart` feature gate (default on) | ~1 s CPU avoidable; adds `ParseRequestError::UnsupportedMultipart` | ✅ |
+| L6 replace pest | 0.5–1 s cold | assessed, deferred (see L6) |
+
+Remaining follow-ups: port D7 to interface/subscription/input-object
+registration; consider `regex-lite` if the validator subset suffices; runtime
+benchmarking of the boxed-trait path (each fix trades at most one small
+allocation per resolved item, but this has not been benchmarked here).

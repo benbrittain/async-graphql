@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Unreleased
+
+Compile-time overhaul (see `COMPILE_TIME.md` for measurements; benchmark
+schema crate: `cargo check` −52%, LLVM IR −62% under `boxed-trait`):
+
+- Under `boxed-trait`, derive macros now emit boxed trait methods directly
+  instead of wrapping generated impls in `#[async_trait]`, list/field/
+  subscription resolution drivers are type-erased and compiled once
+  (`DynOutput`), forwarding impls (`&T`/`Box`/`Arc`/`Option`/`Result`) pass
+  boxed futures through without re-boxing, and field registration is
+  table-driven
+- `#[Object]` no longer emits a `find_entity` override for objects without
+  entity resolvers
+- Add `#[graphql(no_getters)]` to `SimpleObject` to skip generating per-field
+  async getters (only needed for `Interface` members)
+- Move the `regex` validator behind a default-on `regex` feature; disabling it
+  drops the regex crate stack from the dependency tree
+- Move multipart request parsing behind a default-on `multipart` feature;
+  a multipart request received without it returns the new
+  `ParseRequestError::UnsupportedMultipart`. Integration crates enable the
+  feature explicitly
+- Render the GraphiQL page without `askama` (also fixes invalid generated JS
+  when both `headers` and `ws_connection_params` were set)
+- Remove unused `async-graphql-parser` dependency (with `pest`) and `strum`
+  from the derive crate's cold-build critical path
+
 # [8.0.0-rc.5] 2026-04-22
 
 - Fix MergedObject exceeding compiler recursion limit by using flat dispatch instead of nested async delegation in `resolve_field`/`find_entity`, which overflows when cross-crate types amplify monomorphization depth
