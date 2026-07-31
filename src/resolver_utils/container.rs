@@ -92,41 +92,175 @@ pub trait ContainerType: OutputType {
     }
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T: ContainerType + ?Sized> ContainerType for &T {
-    async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>> {
-        T::resolve_field(*self, ctx).await
+    #[cfg(feature = "boxed-trait")]
+    fn resolve_field<'life0, 'life1, 'life2, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        Self: 'async_trait,
+    {
+        T::resolve_field(*self, ctx)
     }
 
-    async fn find_entity(&self, ctx: &Context<'_>, params: &Value) -> ServerResult<Option<Value>> {
-        T::find_entity(*self, ctx, params).await
+    #[cfg(not(feature = "boxed-trait"))]
+    fn resolve_field(
+        &self,
+        ctx: &Context<'_>,
+    ) -> impl Future<Output = ServerResult<Option<Value>>> + Send {
+        T::resolve_field(*self, ctx)
+    }
+
+    #[cfg(feature = "boxed-trait")]
+    fn find_entity<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+        params: &'life3 Value,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: Sync + 'async_trait,
+    {
+        T::find_entity(*self, ctx, params)
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
+    fn find_entity(
+        &self,
+        ctx: &Context<'_>,
+        params: &Value,
+    ) -> impl Future<Output = ServerResult<Option<Value>>> + Send {
+        T::find_entity(*self, ctx, params)
     }
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T: ContainerType + ?Sized> ContainerType for Arc<T> {
-    async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>> {
-        T::resolve_field(self, ctx).await
+    #[cfg(feature = "boxed-trait")]
+    fn resolve_field<'life0, 'life1, 'life2, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        Self: 'async_trait,
+    {
+        T::resolve_field(self, ctx)
     }
 
-    async fn find_entity(&self, ctx: &Context<'_>, params: &Value) -> ServerResult<Option<Value>> {
-        T::find_entity(self, ctx, params).await
+    #[cfg(not(feature = "boxed-trait"))]
+    fn resolve_field(
+        &self,
+        ctx: &Context<'_>,
+    ) -> impl Future<Output = ServerResult<Option<Value>>> + Send {
+        T::resolve_field(self, ctx)
+    }
+
+    #[cfg(feature = "boxed-trait")]
+    fn find_entity<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+        params: &'life3 Value,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: Sync + 'async_trait,
+    {
+        T::find_entity(self, ctx, params)
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
+    fn find_entity(
+        &self,
+        ctx: &Context<'_>,
+        params: &Value,
+    ) -> impl Future<Output = ServerResult<Option<Value>>> + Send {
+        T::find_entity(self, ctx, params)
     }
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T: ContainerType + ?Sized> ContainerType for Box<T> {
-    async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>> {
-        T::resolve_field(self, ctx).await
+    #[cfg(feature = "boxed-trait")]
+    fn resolve_field<'life0, 'life1, 'life2, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        Self: 'async_trait,
+    {
+        T::resolve_field(self, ctx)
     }
 
-    async fn find_entity(&self, ctx: &Context<'_>, params: &Value) -> ServerResult<Option<Value>> {
-        T::find_entity(self, ctx, params).await
+    #[cfg(not(feature = "boxed-trait"))]
+    fn resolve_field(
+        &self,
+        ctx: &Context<'_>,
+    ) -> impl Future<Output = ServerResult<Option<Value>>> + Send {
+        T::resolve_field(self, ctx)
+    }
+
+    #[cfg(feature = "boxed-trait")]
+    fn find_entity<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+        params: &'life3 Value,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: Sync + 'async_trait,
+    {
+        T::find_entity(self, ctx, params)
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
+    fn find_entity(
+        &self,
+        ctx: &Context<'_>,
+        params: &Value,
+    ) -> impl Future<Output = ServerResult<Option<Value>>> + Send {
+        T::find_entity(self, ctx, params)
     }
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T: ContainerType, E: Into<Error> + Send + Sync + Clone> ContainerType for Result<T, E> {
+    #[cfg(feature = "boxed-trait")]
+    fn resolve_field<'life0, 'life1, 'life2, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        Self: 'async_trait,
+    {
+        match self {
+            Ok(value) => T::resolve_field(value, ctx),
+            Err(err) => {
+                let err = ctx.set_error_path(err.clone().into().into_server_error(ctx.item.pos));
+                Box::pin(futures_util::future::ready(Err(err)))
+            }
+        }
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
     async fn resolve_field(&self, ctx: &Context<'_>) -> ServerResult<Option<Value>> {
         match self {
             Ok(value) => T::resolve_field(value, ctx).await,
@@ -134,6 +268,29 @@ impl<T: ContainerType, E: Into<Error> + Send + Sync + Clone> ContainerType for R
         }
     }
 
+    #[cfg(feature = "boxed-trait")]
+    fn find_entity<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 Context<'life2>,
+        params: &'life3 Value,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Option<Value>>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: Sync + 'async_trait,
+    {
+        match self {
+            Ok(value) => T::find_entity(value, ctx, params),
+            Err(err) => {
+                let err = ctx.set_error_path(err.clone().into().into_server_error(ctx.item.pos));
+                Box::pin(futures_util::future::ready(Err(err)))
+            }
+        }
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
     async fn find_entity(&self, ctx: &Context<'_>, params: &Value) -> ServerResult<Option<Value>> {
         match self {
             Ok(value) => T::find_entity(value, ctx, params).await,

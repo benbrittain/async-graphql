@@ -1,7 +1,8 @@
-#[cfg(not(feature = "boxed-trait"))]
-use std::future::Future;
+#[cfg(feature = "boxed-trait")]
+use std::pin::Pin;
 use std::{
     borrow::Cow,
+    future::Future,
     sync::{Arc, Weak},
 };
 
@@ -103,7 +104,6 @@ pub trait OutputType: Send + Sync {
     ) -> impl Future<Output = ServerResult<Value>> + Send;
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T: OutputType + ?Sized> OutputType for &T {
     fn type_name() -> Cow<'static, str> {
         T::type_name()
@@ -113,17 +113,33 @@ impl<T: OutputType + ?Sized> OutputType for &T {
         T::create_type_info(registry)
     }
 
+    #[cfg(feature = "boxed-trait")]
+    fn resolve<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 ContextSelectionSet<'life2>,
+        field: &'life3 Positioned<Field>,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Value>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: 'async_trait,
+    {
+        T::resolve(*self, ctx, field)
+    }
+
     #[allow(clippy::trivially_copy_pass_by_ref)]
-    async fn resolve(
+    #[cfg(not(feature = "boxed-trait"))]
+    fn resolve(
         &self,
         ctx: &ContextSelectionSet<'_>,
         field: &Positioned<Field>,
-    ) -> ServerResult<Value> {
-        T::resolve(*self, ctx, field).await
+    ) -> impl Future<Output = ServerResult<Value>> + Send {
+        T::resolve(*self, ctx, field)
     }
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T: OutputType + Sync, E: Into<Error> + Send + Sync + Clone> OutputType for Result<T, E> {
     fn type_name() -> Cow<'static, str> {
         T::type_name()
@@ -133,6 +149,29 @@ impl<T: OutputType + Sync, E: Into<Error> + Send + Sync + Clone> OutputType for 
         T::create_type_info(registry)
     }
 
+    #[cfg(feature = "boxed-trait")]
+    fn resolve<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 ContextSelectionSet<'life2>,
+        field: &'life3 Positioned<Field>,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Value>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: 'async_trait,
+    {
+        match self {
+            Ok(value) => value.resolve(ctx, field),
+            Err(err) => {
+                let err = ctx.set_error_path(err.clone().into().into_server_error(field.pos));
+                Box::pin(futures_util::future::ready(Err(err)))
+            }
+        }
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
     async fn resolve(
         &self,
         ctx: &ContextSelectionSet<'_>,
@@ -166,7 +205,6 @@ pub trait InputObjectType: InputType {}
 /// A GraphQL oneof input object.
 pub trait OneofObjectType: InputObjectType {}
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T: OutputType + ?Sized> OutputType for Box<T> {
     fn type_name() -> Cow<'static, str> {
         T::type_name()
@@ -177,12 +215,19 @@ impl<T: OutputType + ?Sized> OutputType for Box<T> {
     }
 
     #[cfg(feature = "boxed-trait")]
-    async fn resolve(
-        &self,
-        ctx: &ContextSelectionSet<'_>,
-        field: &Positioned<Field>,
-    ) -> ServerResult<Value> {
-        T::resolve(self.as_ref(), ctx, field).await
+    fn resolve<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 ContextSelectionSet<'life2>,
+        field: &'life3 Positioned<Field>,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Value>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: 'async_trait,
+    {
+        T::resolve(self.as_ref(), ctx, field)
     }
 
     #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -222,7 +267,6 @@ impl<T: InputType> InputType for Box<T> {
     }
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T: OutputType + ?Sized> OutputType for Arc<T> {
     fn type_name() -> Cow<'static, str> {
         T::type_name()
@@ -232,13 +276,30 @@ impl<T: OutputType + ?Sized> OutputType for Arc<T> {
         T::create_type_info(registry)
     }
 
+    #[cfg(feature = "boxed-trait")]
+    fn resolve<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 ContextSelectionSet<'life2>,
+        field: &'life3 Positioned<Field>,
+    ) -> Pin<Box<dyn Future<Output = ServerResult<Value>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: 'async_trait,
+    {
+        T::resolve(&**self, ctx, field)
+    }
+
     #[allow(clippy::trivially_copy_pass_by_ref)]
-    async fn resolve(
+    #[cfg(not(feature = "boxed-trait"))]
+    fn resolve(
         &self,
         ctx: &ContextSelectionSet<'_>,
         field: &Positioned<Field>,
-    ) -> ServerResult<Value> {
-        T::resolve(&**self, ctx, field).await
+    ) -> impl Future<Output = ServerResult<Value>> + Send {
+        T::resolve(&**self, ctx, field)
     }
 }
 

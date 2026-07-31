@@ -45,7 +45,6 @@ impl<T: InputType> InputType for Option<T> {
     }
 }
 
-#[cfg_attr(feature = "boxed-trait", async_trait::async_trait)]
 impl<T: OutputType + Sync> OutputType for Option<T> {
     fn type_name() -> Cow<'static, str> {
         T::type_name()
@@ -60,6 +59,40 @@ impl<T: OutputType + Sync> OutputType for Option<T> {
         T::type_name().to_string()
     }
 
+    #[cfg(feature = "boxed-trait")]
+    fn resolve<'life0, 'life1, 'life2, 'life3, 'async_trait>(
+        &'life0 self,
+        ctx: &'life1 ContextSelectionSet<'life2>,
+        field: &'life3 Positioned<Field>,
+    ) -> ::std::pin::Pin<
+        Box<dyn ::std::future::Future<Output = ServerResult<Value>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        'life3: 'async_trait,
+        Self: 'async_trait,
+    {
+        use futures_util::FutureExt;
+
+        match self {
+            // Forward the inner boxed future through a lightweight `map`
+            // instead of building a second boxed state machine per type.
+            Some(inner) => Box::pin(OutputType::resolve(inner, ctx, field).map(
+                move |res| match res {
+                    Ok(value) => Ok(value),
+                    Err(err) => {
+                        ctx.add_error(err);
+                        Ok(Value::Null)
+                    }
+                },
+            )),
+            None => Box::pin(futures_util::future::ready(Ok(Value::Null))),
+        }
+    }
+
+    #[cfg(not(feature = "boxed-trait"))]
     async fn resolve(
         &self,
         ctx: &ContextSelectionSet<'_>,
